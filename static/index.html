@@ -145,13 +145,15 @@
 <div class="programme-note" id="programmeNote"></div>
 <p class="tech-note">Kai consciousness engine · sine bass · rhythmic harmony · flute melody</p>
 
+<!-- Tone.js for sample-based playback -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 <script>
-// Programme notes and audio synthesis via server endpoints
-const SR = 44100;
-const A4 = 440.0;
-const hz = midi => A4 * Math.pow(2,(midi-69)/12);
+// ── CONSTANTS ──────────────────────────────────────────────────────────────
 const NOTE_NAMES = ['C','C#','D','Eb','E','F','F#','G','Ab','A','Bb','B'];
-const noteName = midi => NOTE_NAMES[((midi%12)+12)%12] + (Math.floor(midi/12)-1);
+const noteName   = midi => NOTE_NAMES[((midi%12)+12)%12] + (Math.floor(midi/12)-1);
+// Tone.js note name (uses sharps only, no flats in sample URLs)
+const SHARP_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const toneNote   = midi => SHARP_NAMES[((midi%12)+12)%12] + (Math.floor(midi/12)-1);
 
 // ── KEY / MODE ─────────────────────────────────────────────────────────────
 let selectedKey=0, selectedMode='minor';
@@ -184,7 +186,7 @@ function buildCadenceChords(patternId) {
   return COMPOSER_PATTERNS[patternId].cadence.map(d=>realizeChord(d,root));
 }
 
-// ── KAI MELODY ENGINE ─────────────────────────────────────────────────────
+// ── KAI MELODY ENGINE ──────────────────────────────────────────────────────
 function chordTones(ch)   { return [...new Set(ch.map(n=>n%12))]; }
 function inChord(midi,ch) { return chordTones(ch).includes(midi%12); }
 function clamp(x,a,b)     { return Math.max(a,Math.min(b,x)); }
@@ -209,12 +211,10 @@ function stepToward(from,to,chord,preferChordOnStrong) {
 }
 function generateMelody(allChords,stepsPerBar) {
   let cur=nearestChordTone(69,allChords[0]);
-
-  // Phrase arc: gently rise toward the middle, then fall (helps the top line "soar")
   const anchors=allChords.map((ch,bar)=>{
-    const phraseArc = Math.sin((bar / Math.max(1,(allChords.length-1))) * Math.PI); // 0→1→0
-    const drift = Math.round(phraseArc * 4); // up to ~M3 of register drift
-    const t=nearestChordTone(cur + drift + (bar%4===3?-2:2), ch);
+    const phraseArc=Math.sin((bar/Math.max(1,allChords.length-1))*Math.PI);
+    const drift=Math.round(phraseArc*4);
+    const t=nearestChordTone(cur+drift+(bar%4===3?-2:2),ch);
     return clamp(t,62,79);
   });
   const lastCh=allChords[allChords.length-1];
@@ -235,241 +235,301 @@ function generateMelody(allChords,stepsPerBar) {
   return melody;
 }
 
-// ── PROFILES ──────────────────────────────────────────────────────────────
+// Groove helpers (Kai)
+function applySwing(time,swingAmt,stepIndex){
+  return time+((stepIndex%2===1)?swingAmt:0);
+}
+function jitter(maxMs){ return (Math.random()*2-1)*(maxMs/1000); }
+const LANE_OFFSET = { bass:-0.010, harmony:0.000, melody:0.015 };
+function liftHarmony(chord){
+  return chord.map(m=>{ let x=m; while(x<55)x+=12; while(x>79)x-=12; return x; });
+}
+const ARP_PATTERNS=[
+  [0,2,1,3,2,1,2,0],[0,1,2,3,2,1],[0,2,3,1,2],[0,1,0,2,0,3],[0,2,4,2,1,3]
+];
+function pickArpIndex(step,chordLen,pattern){
+  const pat=pattern&&pattern.length?pattern:ARP_PATTERNS[0];
+  return pat[step%pat.length]%Math.max(1,chordLen);
+}
+
+// ── COMPOSER PROFILES ──────────────────────────────────────────────────────
 const PROFILES = {
-  bach:        {name:'Bach',        fullName:'J.S. Bach',                layer:'golden_lattice',             entropy:.22,flux:.15,tempo:84, barBeats:4,melNotesPerBar:6, dotted:false,compHits:2},
-  mozart:      {name:'Mozart',      fullName:'W.A. Mozart',              layer:'harmonic_synthesis',         entropy:.28,flux:.18,tempo:116,barBeats:3,melNotesPerBar:6, dotted:false,compHits:3},
-  beethoven:   {name:'Beethoven',   fullName:'Ludwig van Beethoven',     layer:'harmonic_entanglement_field',entropy:.55,flux:.50,tempo:72, barBeats:4,melNotesPerBar:6, dotted:true, compHits:2},
-  tchaikovsky: {name:'Tchaikovsky', fullName:'Pyotr Ilyich Tchaikovsky', layer:'fibonacci_spiral_memory',   entropy:.48,flux:.42,tempo:60, barBeats:3,melNotesPerBar:6, dotted:false,compHits:3},
-  debussy:     {name:'Debussy',     fullName:'Claude Debussy',           layer:'fibonacci_spiral_memory',   entropy:.62,flux:.65,tempo:52, barBeats:4,melNotesPerBar:5, dotted:false,compHits:2},
-  chopin:      {name:'Chopin',      fullName:'Frédéric Chopin',          layer:'fibonacci_spiral_memory',   entropy:.44,flux:.58,tempo:52, barBeats:4,melNotesPerBar:7, dotted:false,compHits:2},
-  vivaldi:     {name:'Vivaldi',     fullName:'Antonio Vivaldi',          layer:'golden_lattice',            entropy:.18,flux:.12,tempo:144,barBeats:4,melNotesPerBar:12,dotted:false,compHits:4},
+  bach:        {name:'Bach',        fullName:'J.S. Bach',                tempo:84, barBeats:4,melNotesPerBar:6, dotted:false,compHits:2,reverb:.15,release:.8},
+  mozart:      {name:'Mozart',      fullName:'W.A. Mozart',              tempo:116,barBeats:3,melNotesPerBar:6, dotted:false,compHits:3,reverb:.12,release:.6},
+  beethoven:   {name:'Beethoven',   fullName:'Ludwig van Beethoven',     tempo:72, barBeats:4,melNotesPerBar:6, dotted:true, compHits:2,reverb:.20,release:1.2},
+  tchaikovsky: {name:'Tchaikovsky', fullName:'Pyotr Ilyich Tchaikovsky', tempo:60, barBeats:3,melNotesPerBar:6, dotted:false,compHits:3,reverb:.28,release:1.0},
+  debussy:     {name:'Debussy',     fullName:'Claude Debussy',           tempo:52, barBeats:4,melNotesPerBar:5, dotted:false,compHits:2,reverb:.40,release:1.5},
+  chopin:      {name:'Chopin',      fullName:'Frédéric Chopin',          tempo:52, barBeats:4,melNotesPerBar:7, dotted:false,compHits:2,reverb:.25,release:1.8},
+  vivaldi:     {name:'Vivaldi',     fullName:'Antonio Vivaldi',          tempo:144,barBeats:4,melNotesPerBar:12,dotted:false,compHits:4,reverb:.10,release:.5},
 };
 function blendProfiles(ids) {
   if(ids.length===1) return {...PROFILES[ids[0]],patternId:ids[0]};
   const pp=ids.map(id=>PROFILES[id]); const w=1/pp.length;
-  const lp={'harmonic_entanglement_field':4,'fibonacci_spiral_memory':3,'harmonic_synthesis':2,'golden_lattice':1};
   return {
     name:pp.map(p=>p.name).join(' · '),fullName:pp.map(p=>p.fullName).join(' & '),patternId:ids[0],
-    layer:  pp.reduce((b,p)=>lp[p.layer]>lp[b]?p.layer:b,pp[0].layer),
-    entropy:pp.reduce((s,p)=>s+p.entropy,0)*w,flux:pp.reduce((s,p)=>s+p.flux,0)*w,
     tempo:  Math.round(pp.reduce((s,p)=>s+p.tempo,0)*w),
     barBeats:Math.round(pp.reduce((s,p)=>s+p.barBeats,0)*w),
     melNotesPerBar:Math.round(pp.reduce((s,p)=>s+p.melNotesPerBar,0)*w),
     dotted: pp.some(p=>p.dotted),
     compHits:Math.round(pp.reduce((s,p)=>s+p.compHits,0)*w),
+    reverb: pp.reduce((s,p)=>s+p.reverb,0)*w,
+    release:pp.reduce((s,p)=>s+p.release,0)*w,
   };
 }
 
-// ── WAVE GENERATORS ───────────────────────────────────────────────────────
+// ── TONE.JS INSTRUMENTS ────────────────────────────────────────────────────
+// Salamander Grand Piano (public CDN) for all three voices.
+// Different octave ranges + volume/reverb treatment give them distinct characters.
 
-function applySwing(time, swingAmt, stepIndex){
-  // push offbeats later for groove (0..~45ms)
-  const isOff = (stepIndex % 2) === 1;
-  return time + (isOff ? swingAmt : 0);
-}
-function jitter(maxMs){ return (Math.random()*2-1) * (maxMs/1000); }
-const LANE_OFFSET = { bass: -0.010, harmony: 0.000, melody: 0.015 }; // seconds
+const SALAMANDER = 'https://tonejs.github.io/audio/salamander/';
+const PIANO_NOTES = {
+  'A0':'A0','C1':'C1','D#1':'Ds1','F#1':'Fs1',
+  'A1':'A1','C2':'C2','D#2':'Ds2','F#2':'Fs2',
+  'A2':'A2','C3':'C3','D#3':'Ds3','F#3':'Fs3',
+  'A3':'A3','C4':'C4','D#4':'Ds4','F#4':'Fs4',
+  'A4':'A4','C5':'C5','D#5':'Ds5','F#5':'Fs5',
+  'A5':'A5','C6':'C6','D#6':'Ds6','F#6':'Fs6',
+  'A6':'A6','C7':'C7',
+};
 
-function liftHarmony(chord){
-  // keep harmony out of the mud: raise low tones into mid register
-  return chord.map(m => {
-    let x = m;
-    while(x < 55) x += 12;  // keep >= G3-ish
-    while(x > 79) x -= 12;
-    return x;
-  });
-}
-const ARP_PATTERNS = [
-  [0,2,1,3,2,1,2,0],   // baroque broken chord (default)
-  [0,1,2,3,2,1],       // up-down
-  [0,2,3,1,2],         // wide leap
-  [0,1,0,2,0,3],       // pedal-ish (keeps returning)
-  [0,2,4,2,1,3],       // alberti-ish (if chord has enough tones)
-];
-
-function pickArpIndex(step, chordLen, pattern){
-  const pat = pattern && pattern.length ? pattern : ARP_PATTERNS[0];
-  return pat[step % pat.length] % Math.max(1, chordLen);
+// Build sample map pointing to CDN
+function salamanderMap() {
+  const map = {};
+  for (const [note, file] of Object.entries(PIANO_NOTES)) {
+    map[note] = SALAMANDER + file + '.mp3';
+  }
+  return map;
 }
 
-// ── ALL AUDIO SYNTHESIS RUNS SERVER-SIDE VIA KAI'S PYTHON ENGINE ─────────
-// JS builds the composition plan (events + schedules for animation).
-// Flask /api/render runs consciousness_synth.py and returns a WAV blob.
+// Reverb shared across instruments
+let reverbNode = null;
 
-function buildCompositionPayload(profile, tempo, uV, det, bassLevel) {
-  const {layer,entropy,flux,patternId}=profile;
-  const beatDur=60/tempo, barDur=beatDur*profile.barBeats;
+// Three samplers — created fresh each compose so release/reverb reflect profile
+let bassSampler=null, harmSampler=null, melSampler=null;
+let samplersReady = false;
 
-  let chordSeq=buildChords(patternId);
-  const cad=buildCadenceChords(patternId);
-  chordSeq[chordSeq.length-2]=cad[0]; chordSeq[chordSeq.length-1]=cad[1];
+async function buildSamplers(profile) {
+  // Dispose old
+  [bassSampler, harmSampler, melSampler].forEach(s=>{ if(s) s.dispose(); });
+  if(reverbNode) reverbNode.dispose();
+  samplersReady = false;
 
-  const swingAmt=0.015+0.030*clamp(flux,0,1);
-  const harmJitMs=6, melJitMs=10, bassJitMs=2;
-  const melodyMidi=generateMelody(chordSeq,profile.melNotesPerBar);
-  const melNDur=barDur/profile.melNotesPerBar;
-  const harmStepsPerBar=(profile.barBeats===3)?6:8;
-  const harmStepDur=barDur/harmStepsPerBar;
-  const totalDur=barDur*chordSeq.length+1.0;
+  reverbNode = new Tone.Reverb({ decay: 1.5 + profile.reverb * 6, wet: profile.reverb }).toDestination();
+  await reverbNode.generate();
 
-  const events=[];
-  const bassLog=[],harmLog=[],melLog=[];
-  const melSchedule=[],harmSchedule=[],bassSchedule=[];
-  const harmDisplayNotes=new Set();
+  const map = salamanderMap();
 
-  for(let bar=0;bar<chordSeq.length;bar++){
-    const rawChord=chordSeq[bar];
-    const chord=liftHarmony(rawChord);
-    const arpPattern=ARP_PATTERNS[Math.floor(Math.random()*ARP_PATTERNS.length)];
-    const barStartS=bar*barDur;
+  // Bass: longer release, routed through reverb, lower volume
+  bassSampler = new Tone.Sampler({
+    urls: map,
+    release: profile.release * 1.2,
+    volume: -8,
+    onload: checkReady,
+  }).connect(reverbNode);
 
-    // BASS
-    const root=Math.max(rawChord[0]-12,40), fifth=root+7;
-    const bassMode=Math.floor(Math.random()*4);
-    const bassEvts=[];
-    if(bassMode===0){ bassEvts.push({midi:root,beat:0}); }
-    else if(bassMode===1){ bassEvts.push({midi:root,beat:0}); if(bassLevel>0.35)bassEvts.push({midi:fifth,beat:Math.floor(profile.barBeats/2)}); }
-    else if(bassMode===2){ bassEvts.push({midi:root,beat:0}); if(bassLevel>0.45)bassEvts.push({midi:root+12,beat:Math.floor(profile.barBeats/2)}); }
-    else { bassEvts.push({midi:root,beat:0}); if(bassLevel>0.55)bassEvts.push({midi:clamp(root+2,36,52),beat:Math.max(1,profile.barBeats-1)}); }
-    for(const ev of bassEvts){
-      const t0=barStartS+ev.beat*beatDur+LANE_OFFSET.bass+jitter(bassJitMs);
-      const dur=Math.min(barDur*0.55,beatDur*0.9);
-      bassSchedule.push({time:t0,duration:dur,midi:ev.midi});
-      events.push({voice:'bass',freqs:[hz(ev.midi)],time:t0,duration:dur,vol:0.22+0.20*clamp(bassLevel,0,1)});
-      bassLog.push(ev.midi);
+  // Harmony: medium release, slightly wet
+  harmSampler = new Tone.Sampler({
+    urls: map,
+    release: profile.release,
+    volume: -12,
+    onload: checkReady,
+  }).connect(reverbNode);
+
+  // Melody: shorter release, direct + wet mix, slightly louder
+  melSampler = new Tone.Sampler({
+    urls: map,
+    release: profile.release * 0.7,
+    volume: -6,
+    onload: checkReady,
+  }).toDestination();  // melody also goes direct for clarity
+  melSampler.connect(reverbNode);
+
+  let loaded = 0;
+  function checkReady() {
+    loaded++;
+    if (loaded >= 3) samplersReady = true;
+  }
+}
+
+// ── COMPOSITION SCHEDULER ──────────────────────────────────────────────────
+function buildSchedule(profile, tempo) {
+  const {patternId} = profile;
+  const beatDur = 60/tempo, barDur = beatDur*profile.barBeats;
+  const swingAmt = 0.012;
+
+  let chordSeq = buildChords(patternId);
+  const cad = buildCadenceChords(patternId);
+  chordSeq[chordSeq.length-2] = cad[0];
+  chordSeq[chordSeq.length-1] = cad[1];
+
+  const melodyMidi = generateMelody(chordSeq, profile.melNotesPerBar);
+  const melNDur    = barDur / profile.melNotesPerBar;
+  const harmStepsPerBar = (profile.barBeats===3) ? 6 : 8;
+  const harmStepDur = barDur / harmStepsPerBar;
+  const totalDur = barDur * chordSeq.length + 2.0;
+
+  const bassEvents=[], harmEvents=[], melEvents=[];
+  const bassLog=[], harmLog=new Set(), melLog=[];
+  const bassSchedule=[], harmSchedule=[], melSchedule=[];
+
+  for(let bar=0; bar<chordSeq.length; bar++){
+    const rawChord = chordSeq[bar];
+    const chord    = liftHarmony(rawChord);
+    const arpPat   = ARP_PATTERNS[Math.floor(Math.random()*ARP_PATTERNS.length)];
+    const barStart = bar * barDur;
+
+    // BASS — root note, played once or twice per bar depending on mode
+    const root  = Math.max(rawChord[0]-12, 36);
+    const fifth = root + 7;
+    const bassMode = Math.floor(Math.random()*4);
+    const bassHits = [[root, 0]];
+    if(bassMode===1 && profile.barBeats>=3) bassHits.push([fifth, Math.floor(profile.barBeats/2)]);
+    if(bassMode===2) bassHits.push([root, Math.floor(profile.barBeats/2)]);
+    if(bassMode===3) bassHits.push([clamp(root+2,36,52), Math.max(1,profile.barBeats-1)]);
+
+    for(const [midi, beat] of bassHits){
+      const t = Math.max(0, barStart + beat*beatDur + LANE_OFFSET.bass + jitter(3));
+      const dur = beatDur * 0.85;
+      bassEvents.push({time:t, midi, dur});
+      bassSchedule.push({time:t, duration:dur, midi});
+      bassLog.push(midi);
     }
 
-    // HARMONY arpeggios
-    for(let hs=0;hs<harmStepsPerBar;hs++){
-      const idx=pickArpIndex(hs,chord.length,arpPattern);
-      const midi=chord[idx];
-      harmDisplayNotes.add(midi);
-      let t0=barStartS+hs*harmStepDur;
-      t0=applySwing(t0,swingAmt,hs)+LANE_OFFSET.harmony+jitter(harmJitMs);
-      const dur=harmStepDur*0.82;
-      harmSchedule.push({time:t0,duration:dur,midi});
-      events.push({voice:'harmony',freqs:[hz(midi)],time:t0,duration:dur,vol:0.34});
+    // HARMONY — arpeggiated, one note per subdivision
+    for(let hs=0; hs<harmStepsPerBar; hs++){
+      const idx  = pickArpIndex(hs, chord.length, arpPat);
+      const midi = chord[idx];
+      harmLog.add(midi);
+      const t   = Math.max(0, applySwing(barStart + hs*harmStepDur, swingAmt, hs) + LANE_OFFSET.harmony + jitter(5));
+      const dur = harmStepDur * 0.78;
+      harmEvents.push({time:t, midi, dur});
+      harmSchedule.push({time:t, duration:dur, midi});
     }
 
-    // MELODY
-    const barMelStart=bar*profile.melNotesPerBar;
-    let melOff=0;
-    for(let mi=0;mi<profile.melNotesPerBar;mi++){
-      const midiNote=melodyMidi[barMelStart+mi];
+    // MELODY — stepwise, with rests and swing
+    const barMelStart = bar * profile.melNotesPerBar;
+    let melOff = 0;
+    for(let mi=0; mi<profile.melNotesPerBar; mi++){
+      const midiNote = melodyMidi[barMelStart + mi];
       if(midiNote===undefined) break;
-      const restChance=0.10+0.12*clamp(flux,0,1);
-      if(Math.random()<restChance&&mi!==0){melOff+=melNDur*0.55;continue;}
-      let dur=melNDur;
-      if(profile.dotted) dur=(mi%2===0)?melNDur*1.40:melNDur*0.60;
-      dur=Math.max(.06,dur);
-      let t0=barStartS+melOff;
-      t0=applySwing(t0,swingAmt*0.8,mi)+LANE_OFFSET.melody+jitter(melJitMs);
-      melSchedule.push({time:t0,duration:dur,midi:midiNote});
-      events.push({voice:'melody',freqs:[hz(midiNote)],time:t0,duration:dur,vol:0.78});
+      // Occasional rest
+      if(Math.random() < 0.10 && mi !== 0){ melOff += melNDur * 0.5; continue; }
+      let dur = melNDur;
+      if(profile.dotted) dur = (mi%2===0) ? melNDur*1.4 : melNDur*0.6;
+      dur = Math.max(0.08, dur);
+      const t = Math.max(0, applySwing(barStart + melOff, swingAmt*0.7, mi) + LANE_OFFSET.melody + jitter(8));
+      melEvents.push({time:t, midi:midiNote, dur});
+      melSchedule.push({time:t, duration:dur, midi:midiNote});
       melLog.push(midiNote);
-      melOff+=dur;
-      if(melOff>barDur*0.98) break;
+      melOff += dur;
+      if(melOff > barDur * 0.98) break;
     }
   }
 
   return {
-    payload:{layer,entropy,flux,unison_voices:uV,detune_amount:det,bass_level:bassLevel,total_duration:totalDur,events},
-    bassLog, harmLog:[...harmDisplayNotes], melLog,
-    melSchedule, harmSchedule, bassSchedule, totalDur
+    bassEvents, harmEvents, melEvents,
+    bassLog, harmLog:[...harmLog], melLog,
+    bassSchedule, harmSchedule, melSchedule,
+    totalDur
   };
 }
 
-// ── AUDIO + ANIMATION ─────────────────────────────────────────────────────
-// Audio playback uses HTMLAudioElement + blob URL — WAV comes from the server.
-let currentAudio=null, currentBlobUrl=null, renderedBlobUrl=null;
-let animRaf=null, playStartTime=null, animAudioEl=null;
-let currentMelSched=[],currentHarmSched=[],currentBassSched=[];
-let melPills=[],harmPills=[],bassPills=[];
-let melPillMap={}, harmPillMap={}, bassPillMap={};
-let melIdx=0,harmIdx=0,bassIdx=0;
+// ── PLAYBACK ───────────────────────────────────────────────────────────────
+let scheduledParts = [];
+let isPlaying = false;
 
-function playBlobUrl(url, onEnd){
-  stopPlay();
-  const audio = new Audio(url);
-  audio.onended = ()=>{ stopAnimation(); if(onEnd) onEnd(); };
-  audio.onplay  = ()=>{ playStartTime = performance.now()/1000; startAnimation(); };
-  audio.play().catch(e=>{ console.error('Audio play failed:', e); if(onEnd) onEnd(); });
-  currentAudio = audio;
-  animAudioEl  = audio;
-}
-function stopPlay(){
-  if(currentAudio){ currentAudio.pause(); currentAudio=null; }
+function stopPlayback() {
+  Tone.Transport.stop();
+  Tone.Transport.cancel();
+  scheduledParts.forEach(p => { try { p.dispose(); } catch(e){} });
+  scheduledParts = [];
+  isPlaying = false;
   stopAnimation();
 }
-function getCurrentTime(){
-  if(!animAudioEl || !playStartTime) return 0;
-  return performance.now()/1000 - playStartTime;
+
+function scheduleParts(bassEvents, harmEvents, melEvents) {
+  stopPlayback();
+
+  // Bass
+  const bassPart = new Tone.Part((time, ev) => {
+    if(bassSampler && samplersReady) {
+      bassSampler.triggerAttackRelease(toneNote(ev.midi), ev.dur, time, 0.75);
+    }
+  }, bassEvents.map(e => [e.time, e]));
+  bassPart.start(0);
+  scheduledParts.push(bassPart);
+
+  // Harmony
+  const harmPart = new Tone.Part((time, ev) => {
+    if(harmSampler && samplersReady) {
+      harmSampler.triggerAttackRelease(toneNote(ev.midi), ev.dur, time, 0.5);
+    }
+  }, harmEvents.map(e => [e.time, e]));
+  harmPart.start(0);
+  scheduledParts.push(harmPart);
+
+  // Melody
+  const melPart = new Tone.Part((time, ev) => {
+    if(melSampler && samplersReady) {
+      melSampler.triggerAttackRelease(toneNote(ev.midi), ev.dur, time, 0.85);
+    }
+  }, melEvents.map(e => [e.time, e]));
+  melPart.start(0);
+  scheduledParts.push(melPart);
 }
 
-function startAnimation(){
-  melIdx=0; harmIdx=0; bassIdx=0; cancelAnimationFrame(animRaf);
-  function frame(){
-    if(!playStartTime) return;
-    const elapsed=getCurrentTime();
+// ── ANIMATION ──────────────────────────────────────────────────────────────
+let animRaf=null, animStartTime=null;
+let currentMelSched=[], currentHarmSched=[], currentBassSched=[];
+let melPills=[], harmPills=[], bassPills=[];
+let melIdx=0, harmIdx=0, bassIdx=0;
 
-    // Melody — gold
-    while(melIdx<currentMelSched.length && elapsed>=currentMelSched[melIdx].time){
-      const ev=currentMelSched[melIdx];
-      const key=noteName(ev.midi);
-      const pill=melPillMap[key] || melPills[melIdx%Math.max(melPills.length,1)];
-      if(pill){
-        pill.classList.add('mel-lit');
-        setTimeout(()=>pill.classList.remove('mel-lit'), ev.duration*880);
-      }
+function startAnimation(totalDur) {
+  melIdx=0; harmIdx=0; bassIdx=0;
+  animStartTime = Tone.now();
+  cancelAnimationFrame(animRaf);
+
+  function frame() {
+    const elapsed = Tone.now() - animStartTime;
+    if(elapsed > totalDur + 0.5) { stopAnimation(); return; }
+
+    while(melIdx < currentMelSched.length && elapsed >= currentMelSched[melIdx].time){
+      const ev = currentMelSched[melIdx];
+      const pill = melPills[melIdx % Math.max(melPills.length,1)];
+      if(pill){ pill.classList.add('mel-lit'); setTimeout(()=>pill.classList.remove('mel-lit'), ev.duration*850); }
       melIdx++;
     }
-
-    // Harmony — teal (one note at a time now)
-    while(harmIdx<currentHarmSched.length && elapsed>=currentHarmSched[harmIdx].time){
-      const ev=currentHarmSched[harmIdx];
-      const dur=ev.duration;
-      const key=noteName(ev.midi);
-      const pill=harmPillMap[key] || harmPills[harmIdx%Math.max(harmPills.length,1)];
-      if(pill){
-        pill.classList.add('harm-lit');
-        setTimeout(()=>pill.classList.remove('harm-lit'), dur*650);
-      }
+    while(harmIdx < currentHarmSched.length && elapsed >= currentHarmSched[harmIdx].time){
+      const ev = currentHarmSched[harmIdx];
+      const pill = harmPills[harmIdx % Math.max(harmPills.length,1)];
+      if(pill){ pill.classList.add('harm-lit'); setTimeout(()=>pill.classList.remove('harm-lit'), ev.duration*600); }
       harmIdx++;
     }
-
-    // Bass — rust
-    while(bassIdx<currentBassSched.length && elapsed>=currentBassSched[bassIdx].time){
-      const ev=currentBassSched[bassIdx];
-      const key=noteName(ev.midi);
-      const pill=bassPillMap[key] || bassPills[bassIdx%Math.max(bassPills.length,1)];
-      if(pill){
-        pill.classList.add('bass-lit');
-        setTimeout(()=>pill.classList.remove('bass-lit'), Math.max(120, ev.duration*380));
-      }
+    while(bassIdx < currentBassSched.length && elapsed >= currentBassSched[bassIdx].time){
+      const pill = bassPills[bassIdx % Math.max(bassPills.length,1)];
+      if(pill){ pill.classList.add('bass-lit'); setTimeout(()=>pill.classList.remove('bass-lit'), 200); }
       bassIdx++;
     }
-
-    if(melIdx<currentMelSched.length||harmIdx<currentHarmSched.length||bassIdx<currentBassSched.length)
-      animRaf=requestAnimationFrame(frame);
+    animRaf = requestAnimationFrame(frame);
   }
-  animRaf=requestAnimationFrame(frame);
-}
-function stopAnimation(){
-  cancelAnimationFrame(animRaf); animRaf=null; playStartTime=null;
-  melPills.forEach(p=>{p.classList.remove('mel-lit');});
-  harmPills.forEach(p=>{p.classList.remove('harm-lit');});
-  bassPills.forEach(p=>{p.classList.remove('bass-lit');});
+  animRaf = requestAnimationFrame(frame);
 }
 
-// ── UI ────────────────────────────────────────────────────────────────────
+function stopAnimation() {
+  cancelAnimationFrame(animRaf); animRaf=null; animStartTime=null;
+  melPills.forEach(p=>p.classList.remove('mel-lit'));
+  harmPills.forEach(p=>p.classList.remove('harm-lit'));
+  bassPills.forEach(p=>p.classList.remove('bass-lit'));
+}
+
+// ── UI HELPERS ─────────────────────────────────────────────────────────────
 const NOTE_NAMES_UI=['C','C#','D','Eb','E','F','F#','G','Ab','A','Bb','B'];
 const keyRow=document.getElementById('keyRow');
 NOTE_NAMES_UI.forEach((name,i)=>{
   const btn=document.createElement('button');
   btn.className='key-btn'+(i===0?' active':'');
   btn.textContent=name;
-  btn.onclick=()=>{selectedKey=i;document.querySelectorAll('.key-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');};
+  btn.onclick=()=>{ selectedKey=i; document.querySelectorAll('.key-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); };
   keyRow.appendChild(btn);
 });
 
@@ -478,7 +538,7 @@ const modeRow=document.getElementById('modeRow');
   const btn=document.createElement('button');
   btn.className='mode-btn'+(mode.toLowerCase()===selectedMode?' active':'');
   btn.textContent=mode;
-  btn.onclick=()=>{selectedMode=mode.toLowerCase();document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');};
+  btn.onclick=()=>{ selectedMode=mode.toLowerCase(); document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); };
   modeRow.appendChild(btn);
 });
 
@@ -507,7 +567,7 @@ function updateHint(){
   const btn=document.getElementById('composeBtn');
   if(!ids.length){hint.textContent='Select a composer to begin';btn.disabled=true;return;}
   hint.textContent=ids.length===1
-    ?`${PROFILES[ids[0]].fullName} · ${PROFILES[ids[0]].layer.replace(/_/g,' ')}`
+    ?`${PROFILES[ids[0]].fullName} · Salamander Grand Piano`
     :`Blending: ${ids.map(id=>PROFILES[id].name).join(' + ')}`;
   btn.disabled=false;
 }
@@ -515,60 +575,50 @@ function updateHint(){
 ['tempo','detune','voices','bass'].forEach(id=>{
   const sl=document.getElementById(id+'Slider');
   const vl=document.getElementById(id+'Val');
-  sl.oninput=()=>{vl.textContent=id==='voices'?sl.value:id==='tempo'?`${sl.value} bpm`:`${sl.value}%`;};
+  if(sl) sl.oninput=()=>{ vl.textContent=id==='voices'?sl.value:id==='tempo'?`${sl.value} bpm`:`${sl.value}%`; };
 });
 
-document.getElementById('composeBtn').addEventListener('click',async()=>{
+// ── COMPOSE BUTTON ─────────────────────────────────────────────────────────
+let currentSchedule = null;
+
+document.getElementById('composeBtn').addEventListener('click', async ()=>{
   const ids=[...selectedIds]; if(!ids.length) return;
-  stopPlay();
+  stopPlayback();
+
   const compBtn=document.getElementById('composeBtn');
-  compBtn.disabled=true; hide('resultPanel'); hide('programmeNote');
+  compBtn.disabled=true;
+  hide('resultPanel'); hide('programmeNote');
   document.getElementById('playBtn').disabled=true;
   document.getElementById('stopBtn').disabled=true;
 
-  const profile  =blendProfiles(ids);
-  const tempo    =parseInt(document.getElementById('tempoSlider').value);
-  const detuneAmt=parseInt(document.getElementById('detuneSlider').value)/100;
-  const uVoices  =parseInt(document.getElementById('voicesSlider').value);
-  const bassLevel=parseInt(document.getElementById('bassSlider').value)/100;
+  const profile  = blendProfiles(ids);
+  const tempo    = parseInt(document.getElementById('tempoSlider').value);
+  const keyLabel = NOTE_NAMES[selectedKey];
 
-  const keyLabel=NOTE_NAMES[selectedKey];
-  setStatus(`Composing in ${keyLabel} ${selectedMode}…`); await tick();
+  setStatus('Loading Salamander piano samples…');
+  await Tone.start(); // unlock AudioContext on user gesture
+  await buildSamplers(profile);
 
-  // Build composition plan in JS (chords, melody, swing, schedules)
-  const {payload,bassLog,harmLog,melLog,melSchedule,harmSchedule,bassSchedule}=
-    buildCompositionPayload(profile,tempo,uVoices,detuneAmt,bassLevel);
+  setStatus(`Composing in ${keyLabel} ${selectedMode}…`);
+  await tick();
 
-  currentMelSched=melSchedule; currentHarmSched=harmSchedule; currentBassSched=bassSchedule;
+  currentSchedule = buildSchedule(profile, tempo);
+  const {bassEvents,harmEvents,melEvents,bassLog,harmLog,melLog,bassSchedule,harmSchedule,melSchedule,totalDur} = currentSchedule;
 
-  melPills  = fillVoice('melNotes',  melLog.slice(0,32),   'mel');
-  harmPills = fillVoice('harmNotes', [...new Set(harmLog)].slice(0,16), 'harm');
-  bassPills = fillVoice('bassNotes', [...new Set(bassLog)].slice(0,8),  'bass');
-  melPillMap  = buildPillMap(melPills);
-  harmPillMap = buildPillMap(harmPills);
-  bassPillMap = buildPillMap(bassPills);
+  currentBassSched = bassSchedule;
+  currentHarmSched = harmSchedule;
+  currentMelSched  = melSchedule;
+
+  melPills  = fillVoice('melNotes',  melLog.slice(0,32));
+  harmPills = fillVoice('harmNotes', [...new Set(harmLog)].slice(0,16));
+  bassPills = fillVoice('bassNotes', [...new Set(bassLog)].slice(0,8));
 
   document.getElementById('pieceTitle').textContent=`A new work · ${profile.name}`;
   document.getElementById('pieceSubtitle').textContent=
-    `${keyLabel} ${selectedMode} · ${profile.layer.replace(/_/g,' ')} · Kai synthesis`;
+    `${keyLabel} ${selectedMode} · Salamander Grand Piano · ${profile.barBeats}/4`;
 
-  // Send to server for rendering through Kai's Python engine
-  setStatus("Sending to Kai synth engine…"); await tick();
-  try {
-    const resp = await fetch('/api/render', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(payload)
-    });
-    if (!resp.ok) throw new Error(`Server error ${resp.status}`);
-    const blob = await resp.blob();
-    if (renderedBlobUrl) URL.revokeObjectURL(renderedBlobUrl);
-    renderedBlobUrl = URL.createObjectURL(blob);
-  } catch(e) {
-    setStatus(`Render failed: ${e.message}`);
-    compBtn.disabled=false;
-    return;
-  }
+  // Pre-schedule all Tone.js parts ready to play
+  scheduleParts(bassEvents, harmEvents, melEvents);
 
   show('resultPanel');
   document.getElementById('playBtn').disabled=false;
@@ -576,39 +626,49 @@ document.getElementById('composeBtn').addEventListener('click',async()=>{
   setStatus('Ready · press Play');
   compBtn.disabled=false;
 
-  getProgrammeNote(profile.fullName,keyLabel,selectedMode).then(note=>{
-    if(note){document.getElementById('programmeNote').textContent=`"${note}"`;show('programmeNote');}
+  getProgrammeNote(profile.fullName, keyLabel, selectedMode).then(note=>{
+    if(note){ document.getElementById('programmeNote').textContent=`"${note}"`; show('programmeNote'); }
   });
 });
 
-function buildPillMap(pills){
-  const map={};
-  pills.forEach(p=>{ if(p && p.textContent) map[p.textContent]=p; });
-  return map;
-}
-function fillVoice(elId,midis,type){
+document.getElementById('playBtn').addEventListener('click', async ()=>{
+  if(!currentSchedule) return;
+  await Tone.start();
+  // Wait for samples if still loading
+  if(!samplersReady){
+    setStatus('Waiting for samples…');
+    await new Promise(r=>{ const iv=setInterval(()=>{ if(samplersReady){clearInterval(iv);r();} },100); });
+  }
+  Tone.Transport.stop();
+  Tone.Transport.position = 0;
+  const btn=document.getElementById('playBtn');
+  btn.classList.add('playing'); btn.textContent='▶ Playing…'; btn.disabled=true;
+  isPlaying=true;
+  Tone.Transport.start();
+  startAnimation(currentSchedule.totalDur);
+  // Re-enable play button after piece ends
+  setTimeout(()=>{
+    btn.classList.remove('playing'); btn.textContent='▶ Play'; btn.disabled=false; isPlaying=false;
+  }, currentSchedule.totalDur * 1000 + 1500);
+  setStatus('');
+});
+
+document.getElementById('stopBtn').addEventListener('click', ()=>{
+  stopPlayback();
+  const btn=document.getElementById('playBtn');
+  btn.classList.remove('playing'); btn.textContent='▶ Play'; btn.disabled=!currentSchedule;
+  setStatus('');
+});
+
+function fillVoice(elId, midis){
   const el=document.getElementById(elId); el.innerHTML=''; const pills=[];
   midis.forEach(m=>{
     const s=document.createElement('span');
-    s.className='note-pill';
-    s.textContent=noteName(m);
-    s.dataset.midi=String(m);
+    s.className='note-pill'; s.textContent=noteName(m);
     el.appendChild(s); pills.push(s);
   });
   return pills;
 }
-document.getElementById('playBtn').addEventListener('click',()=>{
-  if(!renderedBlobUrl) return;
-  const btn=document.getElementById('playBtn');
-  btn.classList.add('playing'); btn.textContent='▶ Playing…'; btn.disabled=true;
-  playBlobUrl(renderedBlobUrl,()=>{btn.classList.remove('playing');btn.textContent='▶ Play';btn.disabled=false;});
-});
-document.getElementById('stopBtn').addEventListener('click',()=>{
-  stopPlay();
-  document.getElementById('playBtn').classList.remove('playing');
-  document.getElementById('playBtn').textContent='▶ Play';
-  document.getElementById('playBtn').disabled=!renderedBlobUrl;
-});
 
 async function getProgrammeNote(name,key,mode){
   try{
