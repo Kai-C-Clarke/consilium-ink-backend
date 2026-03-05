@@ -378,7 +378,7 @@ function buildSchedule(profile, tempo) {
     const arpPat   = ARP_PATTERNS[Math.floor(Math.random()*ARP_PATTERNS.length)];
     const barStart = bar * barDur;
 
-    // BASS — root note, played once or twice per bar depending on mode
+    // BASS — the clock. Placed exactly on the beat, zero jitter.
     const root  = Math.max(rawChord[0]-12, 36);
     const fifth = root + 7;
     const bassMode = Math.floor(Math.random()*4);
@@ -388,41 +388,40 @@ function buildSchedule(profile, tempo) {
     if(bassMode===3) bassHits.push([clamp(root+2,36,52), Math.max(1,profile.barBeats-1)]);
 
     for(const [midi, beat] of bassHits){
-      const t = Math.max(0, barStart + beat*beatDur + LANE_OFFSET.bass + jitter(3));
+      const t   = barStart + beat * beatDur;   // exact — bass is the grid
       const dur = beatDur * 0.85;
       bassEvents.push({time:t, midi, dur});
       bassSchedule.push({time:t, duration:dur, midi});
       bassLog.push(midi);
     }
 
-    // HARMONY — arpeggiated, one note per subdivision
+    // HARMONY — locked to bar grid, tiny humanise nudge only (max 2ms, can't cross a subdivision)
     for(let hs=0; hs<harmStepsPerBar; hs++){
       const idx  = pickArpIndex(hs, chord.length, arpPat);
       const midi = chord[idx];
       harmLog.add(midi);
-      const t   = Math.max(0, applySwing(barStart + hs*harmStepDur, swingAmt, hs) + LANE_OFFSET.harmony + jitter(5));
-      const dur = harmStepDur * 0.78;
+      const gridT = barStart + hs * harmStepDur;   // exact subdivision position
+      const t     = gridT + jitter(2);              // ±2ms human feel, never enough to cross grid
+      const dur   = harmStepDur * 0.78;
       harmEvents.push({time:t, midi, dur});
       harmSchedule.push({time:t, duration:dur, midi});
     }
 
-    // MELODY — stepwise, with rests and swing
+    // MELODY — each note placed at exact grid position within bar, tiny nudge only
     const barMelStart = bar * profile.melNotesPerBar;
-    let melOff = 0;
     for(let mi=0; mi<profile.melNotesPerBar; mi++){
       const midiNote = melodyMidi[barMelStart + mi];
       if(midiNote===undefined) break;
-      // Occasional rest
-      if(Math.random() < 0.10 && mi !== 0){ melOff += melNDur * 0.5; continue; }
-      let dur = melNDur;
-      if(profile.dotted) dur = (mi%2===0) ? melNDur*1.4 : melNDur*0.6;
+      // Occasional rest — skip slot but keep grid position
+      if(Math.random() < 0.10 && mi !== 0) continue;
+      const gridT = barStart + mi * melNDur;        // exact position in bar
+      let dur = melNDur * 0.92;                     // slight gap between notes
+      if(profile.dotted) dur = (mi%2===0) ? melNDur*1.35 : melNDur*0.55;
       dur = Math.max(0.08, dur);
-      const t = Math.max(0, applySwing(barStart + melOff, swingAmt*0.7, mi) + LANE_OFFSET.melody + jitter(8));
+      const t = gridT + jitter(2);                  // ±2ms only
       melEvents.push({time:t, midi:midiNote, dur});
       melSchedule.push({time:t, duration:dur, midi:midiNote});
       melLog.push(midiNote);
-      melOff += dur;
-      if(melOff > barDur * 0.98) break;
     }
   }
 
