@@ -263,6 +263,36 @@ function blendProfiles(ids) {
 
 // ── WAVE GENERATORS ───────────────────────────────────────────────────────
 
+function applySwing(time, swingAmt, stepIndex){
+  // push offbeats later for groove (0..~45ms)
+  const isOff = (stepIndex % 2) === 1;
+  return time + (isOff ? swingAmt : 0);
+}
+function jitter(maxMs){ return (Math.random()*2-1) * (maxMs/1000); }
+const LANE_OFFSET = { bass: -0.010, harmony: 0.000, melody: 0.015 }; // seconds
+
+function liftHarmony(chord){
+  // keep harmony out of the mud: raise low tones into mid register
+  return chord.map(m => {
+    let x = m;
+    while(x < 55) x += 12;  // keep >= G3-ish
+    while(x > 79) x -= 12;
+    return x;
+  });
+}
+const ARP_PATTERNS = [
+  [0,2,1,3,2,1,2,0],   // baroque broken chord (default)
+  [0,1,2,3,2,1],       // up-down
+  [0,2,3,1,2],         // wide leap
+  [0,1,0,2,0,3],       // pedal-ish (keeps returning)
+  [0,2,4,2,1,3],       // alberti-ish (if chord has enough tones)
+];
+
+function pickArpIndex(step, chordLen, pattern){
+  const pat = pattern && pattern.length ? pattern : ARP_PATTERNS[0];
+  return pat[step % pat.length] % Math.max(1, chordLen);
+}
+
 // ── ALL AUDIO SYNTHESIS RUNS SERVER-SIDE VIA KAI'S PYTHON ENGINE ─────────
 // JS builds the composition plan (events + schedules for animation).
 // Flask /api/render runs consciousness_synth.py and returns a WAV blob.
