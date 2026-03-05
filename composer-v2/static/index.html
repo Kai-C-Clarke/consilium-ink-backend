@@ -146,7 +146,7 @@
 <p class="tech-note">Kai consciousness engine · sine bass · rhythmic harmony · flute melody</p>
 
 <script>
-const DEEPSEEK_API_KEY = ''; // ⚠️ do NOT put API keys in client-side code
+// Programme notes and audio synthesis via server endpoints
 const SR = 44100;
 const A4 = 440.0;
 const hz = midi => A4 * Math.pow(2,(midi-69)/12);
@@ -263,150 +263,11 @@ function blendProfiles(ids) {
 
 // ── WAVE GENERATORS ───────────────────────────────────────────────────────
 
-// BASS: pure sine, fixed 80ms decay regardless of tempo
-function genBassTone(freq, dur) {
-  const n = Math.floor(SR*dur); if(n<=0) return new Float32Array(0);
-  const w = new Float32Array(n);
-  const p = 2*Math.PI;
-  for(let i=0;i<n;i++) w[i] = Math.sin(p*freq*(i/SR));
+// ── ALL AUDIO SYNTHESIS RUNS SERVER-SIDE VIA KAI'S PYTHON ENGINE ─────────
+// JS builds the composition plan (events + schedules for animation).
+// Flask /api/render runs consciousness_synth.py and returns a WAV blob.
 
-  const atkSamples = Math.min(Math.floor(SR*0.006), n);  // 6ms attack
-  const decSamples = Math.min(Math.floor(SR*0.080), n);  // 80ms decay — fixed, not tempo-relative
-  for(let i=0;i<n;i++){
-    let e=0;
-    if      (i < atkSamples) e = i/atkSamples;
-    else if (i < decSamples) e = Math.exp(-4.5*(i-atkSamples)/(decSamples-atkSamples));
-    // beyond 80ms: silent
-    w[i]*=e;
-  }
-  return w;
-}
-
-// HARMONY: Kai's layer model, comp stabs with clean decay
-function genHarmonyTone(freq, dur, entropy, flux, layer) {
-  const n=Math.floor(SR*dur); if(n<=0) return new Float32Array(0);
-  const w=new Float32Array(n), p=2*Math.PI;
-  for(let i=0;i<n;i++){
-    const t=i/SR; let s=0;
-    if(layer==='golden_lattice'){
-      s=Math.sin(p*freq*t)+0.618*Math.sin(p*freq*1.618*t)+0.382*Math.sin(p*freq*0.618*t);
-    } else if(layer==='harmonic_synthesis'){
-      s=Math.sin(p*freq*t)+.5*Math.sin(p*freq*2*t)+.25*Math.sin(p*freq*3*t)+.12*Math.sin(p*freq*4*t);
-    } else if(layer==='harmonic_entanglement_field'){
-      const e=entropy*flux;
-      s=Math.sin(p*freq*t)+e*Math.sin(p*freq*Math.E*t)+(1-e)*Math.sin(p*freq*Math.PI*t)+.25*Math.sin(p*freq*2*t);
-    } else if(layer==='fibonacci_spiral_memory'){
-      const sm=1+.08*flux*Math.sin(p*t/Math.max(dur,1e-6));
-      s=Math.sin(p*freq*t*sm)+.5*Math.sin(p*freq*1.618*t*sm);
-    } else {
-      s=Math.sin(p*freq*t)+entropy*Math.sin(p*freq*2*t);
-    }
-    w[i]=s;
-  }
-  // 18ms attack, decay to ~15% by end of stab
-  const atk=Math.floor(SR*.018), rel=Math.floor(SR*.035);
-  for(let i=0;i<n;i++){
-    let e;
-    if      (i<atk)    e=i/atk;
-    else if (i>=n-rel) e=(n-i)/rel;
-    else { const pos=(i-atk)/(n-atk-rel); e=1.0-0.85*pos; }
-    w[i]*=Math.max(0,e);
-  }
-  return w;
-}
-
-// MELODY: bright flute-like, full sustain, vibrato
-function genMelodyTone(freq, dur, flux) {
-  const n=Math.floor(SR*dur); if(n<=0) return new Float32Array(0);
-  const w=new Float32Array(n), p=2*Math.PI;
-  for(let i=0;i<n;i++){
-    const t=i/SR;
-    const vib=1+0.004*Math.sin(p*5.5*t);
-    w[i]=Math.sin(p*freq*vib*t)+0.18*Math.sin(p*freq*3*t)+flux*0.08*Math.sin(p*freq*5*t);
-  }
-  const atk=Math.floor(SR*.006), rel=Math.floor(SR*.020);
-  for(let i=0;i<n;i++){
-    let e;
-    if      (i<atk)    e=i/atk;
-    else if (i>=n-rel) e=(n-i)/rel;
-    else { const pos=(i-atk)/(n-atk-rel); e=0.85+0.15*Math.sin(Math.PI*pos); }
-    w[i]*=Math.max(0,e);
-  }
-  return w;
-}
-
-// ── POLYPHONIC RENDER ─────────────────────────────────────────────────────
-function renderPoly(freqs, dur, entropy, flux, layer, uV, det, voiceType) {
-  const n=Math.floor(SR*dur); if(n<=0) return new Float32Array(0);
-  const out=new Float32Array(n);
-  const effV=voiceType==='melody'?1:(voiceType==='bass'?Math.min(uV,2):uV);
-  const effD=voiceType==='melody'?0:(voiceType==='bass'?det*.15:det);
-  const maxC=8*effD;
-  let cents,wts;
-  if(effV<=1||maxC<=0){cents=[0];wts=[1];}
-  else{
-    cents=[0];wts=[.62];
-    const step=maxC/(effV-1),wEach=.38/(effV-1);
-    for(let k=1;k<effV;k++){cents.push(k%2===1?step*k:-step*k*.85);wts.push(wEach);}
-  }
-  for(const f of freqs){
-    if(f<20) continue;
-    for(let vi=0;vi<cents.length;vi++){
-      const ratio=Math.pow(2,cents[vi]/1200);
-      let wave;
-      if      (voiceType==='bass')    wave=genBassTone(f*ratio, dur);
-      else if (voiceType==='harmony') wave=genHarmonyTone(f*ratio, dur, entropy, flux, layer);
-      else                            wave=genMelodyTone(f*ratio, dur, flux);
-      for(let i=0;i<Math.min(wave.length,n);i++) out[i]+=wave[i]*wts[vi];
-    }
-  }
-  let mx=0; for(let i=0;i<n;i++) mx=Math.max(mx,Math.abs(out[i]));
-  if(mx>0) for(let i=0;i<n;i++) out[i]/=mx;
-  return out;
-}
-
-function applyFx(buf,layer,entropy){
-  const n=buf.length;
-  if(layer==='golden_lattice'){for(let i=0;i<n;i++)buf[i]*=.8+.2*Math.sin(1.618*Math.PI*i/SR);}
-  else if(layer==='fibonacci_spiral_memory'){for(let i=0;i<n;i++)buf[i]*=.9+.1*Math.sin(8*Math.PI*i/n);}
-  else if(layer==='harmonic_entanglement_field'){const d=Math.floor(.06*SR);for(let i=n-1;i>=d;i--)buf[i]+=buf[i-d]*.08*entropy;}
-  else if(layer==='harmonic_synthesis'){for(let i=0;i<n;i++)buf[i]*=.85+.15*Math.sin(4*Math.PI*i/n);}
-}
-
-// ── TIMELINE ──────────────────────────────────────────────────────────────
-
-function applySwing(time, swingAmt, stepIndex){
-  // push offbeats later for groove (0..~45ms)
-  const isOff = (stepIndex % 2) === 1;
-  return time + (isOff ? swingAmt : 0);
-}
-function jitter(maxMs){ return (Math.random()*2-1) * (maxMs/1000); }
-const LANE_OFFSET = { bass: -0.010, harmony: 0.000, melody: 0.015 }; // seconds
-
-function liftHarmony(chord){
-  // keep harmony out of the mud: raise low tones into mid register
-  return chord.map(m => {
-    let x = m;
-    while(x < 55) x += 12;  // keep >= G3-ish
-    while(x > 79) x -= 12;
-    return x;
-  });
-}
-const ARP_PATTERNS = [
-  [0,2,1,3,2,1,2,0],   // baroque broken chord (default)
-  [0,1,2,3,2,1],       // up-down
-  [0,2,3,1,2],         // wide leap
-  [0,1,0,2,0,3],       // pedal-ish (keeps returning)
-  [0,2,4,2,1,3],       // alberti-ish (if chord has enough tones)
-];
-
-function pickArpIndex(step, chordLen, pattern){
-  const pat = pattern && pattern.length ? pattern : ARP_PATTERNS[0];
-  return pat[step % pat.length] % Math.max(1, chordLen);
-}
-
-// ── TIMELINE (groove + arpeggios + cleaner mix) ───────────────────────────
-function buildTimeline(profile, tempo, uV, det, bassLevel) {
+function buildCompositionPayload(profile, tempo, uV, det, bassLevel) {
   const {layer,entropy,flux,patternId}=profile;
   const beatDur=60/tempo, barDur=beatDur*profile.barBeats;
 
@@ -414,177 +275,113 @@ function buildTimeline(profile, tempo, uV, det, bassLevel) {
   const cad=buildCadenceChords(patternId);
   chordSeq[chordSeq.length-2]=cad[0]; chordSeq[chordSeq.length-1]=cad[1];
 
-  // feel controls
-  const swingAmt = 0.015 + 0.030 * clamp(flux,0,1); // 15–45ms
-  const harmJitMs = 6, melJitMs = 10, bassJitMs = 2;
-
-  // melody
+  const swingAmt=0.015+0.030*clamp(flux,0,1);
+  const harmJitMs=6, melJitMs=10, bassJitMs=2;
   const melodyMidi=generateMelody(chordSeq,profile.melNotesPerBar);
   const melNDur=barDur/profile.melNotesPerBar;
-
-  // arpeggio subdivision: 8ths for 4/4, 6 for 3/4
-  const harmStepsPerBar = (profile.barBeats===3) ? 6 : 8;
-  const harmStepDur = barDur / harmStepsPerBar;
-
+  const harmStepsPerBar=(profile.barBeats===3)?6:8;
+  const harmStepDur=barDur/harmStepsPerBar;
   const totalDur=barDur*chordSeq.length+1.0;
-  const total=Math.floor(SR*totalDur);
-  const L=new Float32Array(total), R=new Float32Array(total);
 
+  const events=[];
   const bassLog=[],harmLog=[],melLog=[];
   const melSchedule=[],harmSchedule=[],bassSchedule=[];
   const harmDisplayNotes=new Set();
 
   for(let bar=0;bar<chordSeq.length;bar++){
     const rawChord=chordSeq[bar];
-    const chord=liftHarmony(rawChord);              // for harmony voice
-
-    // choose an arpeggio shape per bar (adds variation without adding mud)
-    const arpPattern = ARP_PATTERNS[Math.floor(Math.random()*ARP_PATTERNS.length)];
+    const chord=liftHarmony(rawChord);
+    const arpPattern=ARP_PATTERNS[Math.floor(Math.random()*ARP_PATTERNS.length)];
     const barStartS=bar*barDur;
-    const barStart=Math.floor(barStartS*SR);
 
-    // ── BASS: one or two gentle hits per bar (not swampy) ─────────────────
-    const root = Math.max(rawChord[0]-12, 40); // keep bass above E2-ish
-    const fifth = root + 7;
-
-    // Bass variation: choose a behaviour per bar (pedal / root-5th / octave pulse / walk)
-    const bassMode = Math.floor(Math.random() * 4);
-    const bassEvents = [];
-
-    if (bassMode === 0) {
-      // pedal
-      bassEvents.push({ midi: root, beat: 0 });
-    } else if (bassMode === 1) {
-      // root–fifth (classic)
-      bassEvents.push({ midi: root, beat: 0 });
-      if (bassLevel > 0.35) bassEvents.push({ midi: fifth, beat: Math.floor(profile.barBeats/2) });
-    } else if (bassMode === 2) {
-      // octave pulse (keeps weight without mud)
-      bassEvents.push({ midi: root, beat: 0 });
-      if (bassLevel > 0.45) bassEvents.push({ midi: root + 12, beat: Math.floor(profile.barBeats/2) });
-    } else {
-      // walking approach (sparingly, helps cadences feel intentional)
-      bassEvents.push({ midi: root, beat: 0 });
-      if (bassLevel > 0.55) bassEvents.push({ midi: clamp(root + 2, 36, 52), beat: Math.max(1, profile.barBeats - 1) });
-    }
-
-    for(let bi=0; bi<bassEvents.length; bi++){
-      const ev = bassEvents[bi];
-      const t0 = barStartS + ev.beat*beatDur + LANE_OFFSET.bass + jitter(bassJitMs);
-      const start = Math.max(0, Math.floor(t0*SR));
-      const dur = Math.min(barDur*0.55, beatDur*0.9);
-      bassSchedule.push({time: t0, duration: dur, midi: ev.midi});
-
-      // IMPORTANT: bass should be quiet and NOT detuned
-      const bMono = renderPoly([hz(ev.midi)], dur, entropy, flux, layer, 1, 0, 'bass');
-      const bVol  = 0.22 + 0.20 * clamp(bassLevel,0,1); // 0.22..0.42
-      for(let i=0;i<bMono.length;i++){
-        const p=start+i; if(p<total){ L[p]+=bMono[i]*bVol; R[p]+=bMono[i]*bVol*0.88; }
-      }
+    // BASS
+    const root=Math.max(rawChord[0]-12,40), fifth=root+7;
+    const bassMode=Math.floor(Math.random()*4);
+    const bassEvts=[];
+    if(bassMode===0){ bassEvts.push({midi:root,beat:0}); }
+    else if(bassMode===1){ bassEvts.push({midi:root,beat:0}); if(bassLevel>0.35)bassEvts.push({midi:fifth,beat:Math.floor(profile.barBeats/2)}); }
+    else if(bassMode===2){ bassEvts.push({midi:root,beat:0}); if(bassLevel>0.45)bassEvts.push({midi:root+12,beat:Math.floor(profile.barBeats/2)}); }
+    else { bassEvts.push({midi:root,beat:0}); if(bassLevel>0.55)bassEvts.push({midi:clamp(root+2,36,52),beat:Math.max(1,profile.barBeats-1)}); }
+    for(const ev of bassEvts){
+      const t0=barStartS+ev.beat*beatDur+LANE_OFFSET.bass+jitter(bassJitMs);
+      const dur=Math.min(barDur*0.55,beatDur*0.9);
+      bassSchedule.push({time:t0,duration:dur,midi:ev.midi});
+      events.push({voice:'bass',freqs:[hz(ev.midi)],time:t0,duration:dur,vol:0.22+0.20*clamp(bassLevel,0,1)});
       bassLog.push(ev.midi);
     }
 
-    // ── HARMONY: arpeggios (no block chords) + swing + microtiming ────────
-    for(let hs=0; hs<harmStepsPerBar; hs++){
-      const idx = pickArpIndex(hs, chord.length, arpPattern);
-      const midi = chord[idx];
+    // HARMONY arpeggios
+    for(let hs=0;hs<harmStepsPerBar;hs++){
+      const idx=pickArpIndex(hs,chord.length,arpPattern);
+      const midi=chord[idx];
       harmDisplayNotes.add(midi);
-
-      let t0 = barStartS + hs*harmStepDur;
-      t0 = applySwing(t0, swingAmt, hs) + LANE_OFFSET.harmony + jitter(harmJitMs);
-
-      const dur = harmStepDur * 0.82;
-      const start = Math.max(0, Math.floor(t0*SR));
-      harmSchedule.push({time: t0, duration: dur, midi});
-
-      // harmony quieter + keep detune (Carlos warmth) but avoid mud
-      const hMono = renderPoly([hz(midi)], dur, entropy, flux, layer, uV, det, 'harmony');
-      const hVol  = 0.34;
-      for(let i=0;i<hMono.length;i++){
-        const p=start+i; if(p<total){ L[p]+=hMono[i]*hVol; R[p]+=hMono[i]*hVol; }
-      }
+      let t0=barStartS+hs*harmStepDur;
+      t0=applySwing(t0,swingAmt,hs)+LANE_OFFSET.harmony+jitter(harmJitMs);
+      const dur=harmStepDur*0.82;
+      harmSchedule.push({time:t0,duration:dur,midi});
+      events.push({voice:'harmony',freqs:[hz(midi)],time:t0,duration:dur,vol:0.34});
     }
 
-    // ── MELODY: add rests + offbeat phrasing + microtiming ────────────────
+    // MELODY
     const barMelStart=bar*profile.melNotesPerBar;
     let melOff=0;
     for(let mi=0;mi<profile.melNotesPerBar;mi++){
       const midiNote=melodyMidi[barMelStart+mi];
       if(midiNote===undefined) break;
-
-      // occasional rest (reduces clockwork + lets harmony/bass breathe)
-      const restChance = 0.10 + 0.12 * clamp(flux,0,1);
-      if(Math.random() < restChance && mi !== 0){
-        melOff += melNDur * 0.55;
-        continue;
-      }
-
-      let dur = melNDur;
-      if(profile.dotted) dur = (mi%2===0) ? melNDur*1.40 : melNDur*0.60;
-      dur = Math.max(.06, dur);
-
-      // start time with swing and a slight late feel
-      let t0 = barStartS + melOff;
-      t0 = applySwing(t0, swingAmt*0.8, mi) + LANE_OFFSET.melody + jitter(melJitMs);
-
-      const start = Math.max(0, Math.floor(t0*SR));
-      melSchedule.push({time:t0, duration:dur, midi:midiNote});
-
-      const mMono = renderPoly([hz(midiNote)], dur, entropy, flux, layer, 1, 0, 'melody');
-      const mVol  = 0.78;
-      for(let i=0;i<mMono.length;i++){
-        const p=start+i; if(p<total){ L[p]+=mMono[i]*mVol; R[p]+=mMono[i]*mVol*0.96; }
-      }
-
+      const restChance=0.10+0.12*clamp(flux,0,1);
+      if(Math.random()<restChance&&mi!==0){melOff+=melNDur*0.55;continue;}
+      let dur=melNDur;
+      if(profile.dotted) dur=(mi%2===0)?melNDur*1.40:melNDur*0.60;
+      dur=Math.max(.06,dur);
+      let t0=barStartS+melOff;
+      t0=applySwing(t0,swingAmt*0.8,mi)+LANE_OFFSET.melody+jitter(melJitMs);
+      melSchedule.push({time:t0,duration:dur,midi:midiNote});
+      events.push({voice:'melody',freqs:[hz(midiNote)],time:t0,duration:dur,vol:0.78});
       melLog.push(midiNote);
-      melOff += dur;
-      if(melOff > barDur*0.98) break;
+      melOff+=dur;
+      if(melOff>barDur*0.98) break;
     }
   }
 
-  applyFx(L,layer,entropy); applyFx(R,layer,entropy);
-  let mx=0; for(let i=0;i<total;i++) mx=Math.max(mx,Math.abs(L[i]),Math.abs(R[i]));
-  if(mx>0){const sc=.84/mx; for(let i=0;i<total;i++){L[i]*=sc;R[i]*=sc;}}
-
-  const ctx=getCtx();
-  const abuf=ctx.createBuffer(2,total,SR);
-  abuf.copyToChannel(L,0); abuf.copyToChannel(R,1);
-
   return {
-    abuf,
+    payload:{layer,entropy,flux,unison_voices:uV,detune_amount:det,bass_level:bassLevel,total_duration:totalDur,events},
     bassLog, harmLog:[...harmDisplayNotes], melLog,
-    melSchedule, harmSchedule, bassSchedule
+    melSchedule, harmSchedule, bassSchedule, totalDur
   };
 }
 
 // ── AUDIO + ANIMATION ─────────────────────────────────────────────────────
-let audioCtx=null,currentSrc=null,renderedBuffer=null;
-let animRaf=null,playStartTime=null;
+// Audio playback uses HTMLAudioElement + blob URL — WAV comes from the server.
+let currentAudio=null, currentBlobUrl=null, renderedBlobUrl=null;
+let animRaf=null, playStartTime=null, animAudioEl=null;
 let currentMelSched=[],currentHarmSched=[],currentBassSched=[];
 let melPills=[],harmPills=[],bassPills=[];
 let melPillMap={}, harmPillMap={}, bassPillMap={};
 let melIdx=0,harmIdx=0,bassIdx=0;
 
-function getCtx(){
-  if(!audioCtx) audioCtx=new(window.AudioContext||window.webkitAudioContext)({sampleRate:SR});
-  return audioCtx;
-}
-function playBuf(buf,onEnd){
-  stopPlay(); const ctx=getCtx(); if(ctx.state==='suspended') ctx.resume();
-  const src=ctx.createBufferSource();
-  src.buffer=buf; src.connect(ctx.destination);
-  src.onended=()=>{stopAnimation();if(onEnd)onEnd();};
-  src.start(); currentSrc=src; playStartTime=ctx.currentTime; startAnimation();
+function playBlobUrl(url, onEnd){
+  stopPlay();
+  const audio = new Audio(url);
+  audio.onended = ()=>{ stopAnimation(); if(onEnd) onEnd(); };
+  audio.onplay  = ()=>{ playStartTime = performance.now()/1000; startAnimation(); };
+  audio.play().catch(e=>{ console.error('Audio play failed:', e); if(onEnd) onEnd(); });
+  currentAudio = audio;
+  animAudioEl  = audio;
 }
 function stopPlay(){
-  if(currentSrc){try{currentSrc.stop();}catch(e){}currentSrc=null;} stopAnimation();
+  if(currentAudio){ currentAudio.pause(); currentAudio=null; }
+  stopAnimation();
+}
+function getCurrentTime(){
+  if(!animAudioEl || !playStartTime) return 0;
+  return performance.now()/1000 - playStartTime;
 }
 
 function startAnimation(){
   melIdx=0; harmIdx=0; bassIdx=0; cancelAnimationFrame(animRaf);
   function frame(){
     if(!playStartTime) return;
-    const elapsed=getCtx().currentTime-playStartTime;
+    const elapsed=getCurrentTime();
 
     // Melody — gold
     while(melIdx<currentMelSched.length && elapsed>=currentMelSched[melIdx].time){
@@ -693,7 +490,7 @@ function updateHint(){
 
 document.getElementById('composeBtn').addEventListener('click',async()=>{
   const ids=[...selectedIds]; if(!ids.length) return;
-  stopPlay(); renderedBuffer=null;
+  stopPlay();
   const compBtn=document.getElementById('composeBtn');
   compBtn.disabled=true; hide('resultPanel'); hide('programmeNote');
   document.getElementById('playBtn').disabled=true;
@@ -707,12 +504,11 @@ document.getElementById('composeBtn').addEventListener('click',async()=>{
 
   const keyLabel=NOTE_NAMES[selectedKey];
   setStatus(`Composing in ${keyLabel} ${selectedMode}…`); await tick();
-  setStatus('Rendering voices…'); await tick();
 
-  const {abuf,bassLog,harmLog,melLog,melSchedule,harmSchedule,bassSchedule}=
-    buildTimeline(profile,tempo,uVoices,detuneAmt,bassLevel);
+  // Build composition plan in JS (chords, melody, swing, schedules)
+  const {payload,bassLog,harmLog,melLog,melSchedule,harmSchedule,bassSchedule}=
+    buildCompositionPayload(profile,tempo,uVoices,detuneAmt,bassLevel);
 
-  renderedBuffer=abuf;
   currentMelSched=melSchedule; currentHarmSched=harmSchedule; currentBassSched=bassSchedule;
 
   melPills  = fillVoice('melNotes',  melLog.slice(0,32),   'mel');
@@ -724,7 +520,25 @@ document.getElementById('composeBtn').addEventListener('click',async()=>{
 
   document.getElementById('pieceTitle').textContent=`A new work · ${profile.name}`;
   document.getElementById('pieceSubtitle').textContent=
-    `${keyLabel} ${selectedMode} · ${profile.layer.replace(/_/g,' ')} · ${profile.compHits} harmony hits/bar`;
+    `${keyLabel} ${selectedMode} · ${profile.layer.replace(/_/g,' ')} · Kai synthesis`;
+
+  // Send to server for rendering through Kai's Python engine
+  setStatus('Sending to Kai's synth engine…'); await tick();
+  try {
+    const resp = await fetch('/api/render', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload)
+    });
+    if (!resp.ok) throw new Error(`Server error ${resp.status}`);
+    const blob = await resp.blob();
+    if (renderedBlobUrl) URL.revokeObjectURL(renderedBlobUrl);
+    renderedBlobUrl = URL.createObjectURL(blob);
+  } catch(e) {
+    setStatus(`Render failed: ${e.message}`);
+    compBtn.disabled=false;
+    return;
+  }
 
   show('resultPanel');
   document.getElementById('playBtn').disabled=false;
@@ -754,30 +568,26 @@ function fillVoice(elId,midis,type){
   return pills;
 }
 document.getElementById('playBtn').addEventListener('click',()=>{
-  if(!renderedBuffer) return;
+  if(!renderedBlobUrl) return;
   const btn=document.getElementById('playBtn');
   btn.classList.add('playing'); btn.textContent='▶ Playing…'; btn.disabled=true;
-  playBuf(renderedBuffer,()=>{btn.classList.remove('playing');btn.textContent='▶ Play';btn.disabled=false;});
+  playBlobUrl(renderedBlobUrl,()=>{btn.classList.remove('playing');btn.textContent='▶ Play';btn.disabled=false;});
 });
 document.getElementById('stopBtn').addEventListener('click',()=>{
   stopPlay();
   document.getElementById('playBtn').classList.remove('playing');
   document.getElementById('playBtn').textContent='▶ Play';
-  document.getElementById('playBtn').disabled=!renderedBuffer;
+  document.getElementById('playBtn').disabled=!renderedBlobUrl;
 });
 
 async function getProgrammeNote(name,key,mode){
-  if(!DEEPSEEK_API_KEY || !DEEPSEEK_API_KEY.startsWith('sk-')) return '';
   try{
-    const res=await fetch('https://api.deepseek.com/chat/completions',{
+    const res=await fetch('/api/programme-note',{
       method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':`Bearer ${DEEPSEEK_API_KEY}`},
-      body:JSON.stringify({model:'deepseek-chat',messages:[
-        {role:'system',content:`Write a single poetic sentence as a programme note for a new generative piece in ${key} ${mode} inspired by ${name}. No preamble.`},
-        {role:'user',content:'Describe the piece.'}
-      ],max_tokens:80,temperature:.9})
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name,key,mode})
     });
-    const d=await res.json(); return d.choices?.[0]?.message?.content?.trim()||'';
+    const d=await res.json(); return d.note||'';
   }catch(e){return '';}
 }
 
