@@ -254,13 +254,13 @@ function pickArpIndex(step,chordLen,pattern){
 
 // ── COMPOSER PROFILES ──────────────────────────────────────────────────────
 const PROFILES = {
-  bach:        {name:'Bach',        fullName:'J.S. Bach',                tempo:84, barBeats:4,melNotesPerBar:6, dotted:false,compHits:2,reverb:.15,release:.8},
+  bach:        {name:'Bach',        fullName:'J.S. Bach',                tempo:84, barBeats:4,melNotesPerBar:8, dotted:false,compHits:2,reverb:.15,release:.8},
   mozart:      {name:'Mozart',      fullName:'W.A. Mozart',              tempo:116,barBeats:3,melNotesPerBar:6, dotted:false,compHits:3,reverb:.12,release:.6},
-  beethoven:   {name:'Beethoven',   fullName:'Ludwig van Beethoven',     tempo:72, barBeats:4,melNotesPerBar:6, dotted:true, compHits:2,reverb:.20,release:1.2},
+  beethoven:   {name:'Beethoven',   fullName:'Ludwig van Beethoven',     tempo:72, barBeats:4,melNotesPerBar:8, dotted:true, compHits:2,reverb:.20,release:1.2},
   tchaikovsky: {name:'Tchaikovsky', fullName:'Pyotr Ilyich Tchaikovsky', tempo:60, barBeats:3,melNotesPerBar:6, dotted:false,compHits:3,reverb:.28,release:1.0},
-  debussy:     {name:'Debussy',     fullName:'Claude Debussy',           tempo:52, barBeats:4,melNotesPerBar:5, dotted:false,compHits:2,reverb:.40,release:1.5},
-  chopin:      {name:'Chopin',      fullName:'Frédéric Chopin',          tempo:52, barBeats:4,melNotesPerBar:7, dotted:false,compHits:2,reverb:.25,release:1.8},
-  vivaldi:     {name:'Vivaldi',     fullName:'Antonio Vivaldi',          tempo:144,barBeats:4,melNotesPerBar:12,dotted:false,compHits:4,reverb:.10,release:.5},
+  debussy:     {name:'Debussy',     fullName:'Claude Debussy',           tempo:52, barBeats:4,melNotesPerBar:8, dotted:false,compHits:2,reverb:.40,release:1.5},
+  chopin:      {name:'Chopin',      fullName:'Frédéric Chopin',          tempo:52, barBeats:4,melNotesPerBar:8, dotted:false,compHits:2,reverb:.25,release:1.8},
+  vivaldi:     {name:'Vivaldi',     fullName:'Antonio Vivaldi',          tempo:144,barBeats:4,melNotesPerBar:16,dotted:false,compHits:4,reverb:.10,release:.5},
 };
 function blendProfiles(ids) {
   if(ids.length===1) return {...PROFILES[ids[0]],patternId:ids[0]};
@@ -364,7 +364,7 @@ function buildSchedule(profile, tempo) {
 
   const melodyMidi = generateMelody(chordSeq, profile.melNotesPerBar);
   const melNDur    = barDur / profile.melNotesPerBar;
-  const harmStepsPerBar = (profile.barBeats===3) ? 6 : 8;
+  const harmStepsPerBar = profile.melNotesPerBar;  // always in sync with melody grid
   const harmStepDur = barDur / harmStepsPerBar;
   const totalDur = barDur * chordSeq.length + 2.0;
 
@@ -615,7 +615,7 @@ document.getElementById('composeBtn').addEventListener('click', async ()=>{
 
   document.getElementById('pieceTitle').textContent=`A new work · ${profile.name}`;
   document.getElementById('pieceSubtitle').textContent=
-    `${keyLabel} ${selectedMode} · Salamander Grand Piano · ${profile.barBeats}/4`;
+    `${keyLabel} ${selectedMode} · Salamander Grand Piano · ${profile.barBeats}/4 · ${profile.melNotesPerBar} notes/bar`;
 
   // Pre-schedule all Tone.js parts ready to play
   scheduleParts(bassEvents, harmEvents, melEvents);
