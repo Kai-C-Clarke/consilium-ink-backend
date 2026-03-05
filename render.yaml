@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: the-composer
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 30
+    envVars:
+      - key: DEEPSEEK_API_KEY
+        sync: false   # set manually in Render dashboard — never committed to repo
+    autoDeploy: true
