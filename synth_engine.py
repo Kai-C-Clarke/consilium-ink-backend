@@ -269,7 +269,7 @@ def render_composition(data: dict) -> bytes:
         t_start  = float(ev.get('time', 0.0))
         dur      = float(ev.get('duration', 0.5))
         vol      = float(ev.get('vol', 0.7))
-        start_s  = int(t_start * SR)
+        start_s  = max(0, int(t_start * SR))  # clamp: LANE_OFFSET/jitter can go negative
 
         if not freqs or dur <= 0 or start_s >= total_samples:
             continue
