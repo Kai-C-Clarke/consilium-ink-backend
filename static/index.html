@@ -523,7 +523,7 @@ document.getElementById('composeBtn').addEventListener('click',async()=>{
     `${keyLabel} ${selectedMode} · ${profile.layer.replace(/_/g,' ')} · Kai synthesis`;
 
   // Send to server for rendering through Kai's Python engine
-  setStatus('Sending to Kai's synth engine…'); await tick();
+  setStatus("Sending to Kai synth engine…"); await tick();
   try {
     const resp = await fetch('/api/render', {
       method: 'POST',
