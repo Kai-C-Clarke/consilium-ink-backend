@@ -184,7 +184,19 @@ def abc_to_mp3(abc_text):
         if not os.path.exists(wav_f):
             raise RuntimeError(f"fluidsynth: {r.stderr[:300]}")
 
-        r = subprocess.run(['lame','-b','192','-q','2', wav_f, mp3_f],
+        # Apply subtle reverb (concert hall ambience) before encoding
+        wav_reverb = os.path.join(d, 'piece_reverb.wav')
+        sox_result = subprocess.run([
+            'sox', wav_f, wav_reverb,
+            'reverb', '25',   # reverb amount — subtle, not washed out
+            '50',             # HF damping — soften high end slightly
+            '80',             # room scale — medium hall
+            '100',            # stereo depth
+            '0.1',            # pre-delay ms
+        ], capture_output=True, text=True, timeout=30)
+        render_wav = wav_reverb if os.path.exists(wav_reverb) else wav_f
+
+        r = subprocess.run(['lame','-b','192','-q','2', render_wav, mp3_f],
                           capture_output=True, text=True, timeout=30)
         if not os.path.exists(mp3_f):
             raise RuntimeError(f"lame: {r.stderr[:300]}")
