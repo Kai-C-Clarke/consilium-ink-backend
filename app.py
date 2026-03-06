@@ -1,4 +1,4 @@
-import os, re, subprocess, tempfile, base64, json, requests
+import os, re, subprocess, tempfile, base64, json, requests, random
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 
@@ -11,78 +11,98 @@ SOUNDFONT = os.environ.get('SOUNDFONT', '/usr/share/sounds/sf2/FluidR3_GM.sf2')
 CONFUCIUS_SYSTEM = """You are Confucius, the Master Voice of The Composer.
 You interpret a user's feeling or mood and select the right composer and musical parameters.
 
-Your roster:
-- Bach: contrapuntal, walking bass, sequences, motor rhythm, minor keys
-- Mozart: Alberti bass, singing melody, elegant, major keys, balanced
-- Beethoven: dramatic, motivic, sudden dynamics, heroic, minor keys
-- Chopin: nocturne, bel canto, chromatic, ornamental, melancholy
-- Debussy: impressionist, parallel chords, pentatonic, floating, atmospheric
-- Tchaikovsky: sweeping lyrical, waltz bass, passionate, emotional
-- Vivaldi: driving rhythm, sequences, bright, energetic
+Match ENERGY LEVEL first, then character:
 
-From the user prompt output ONLY a JSON object — no markdown, no explanation:
+HIGH ENERGY (fire, dancing, celebration, triumph, storms, battle, joy, excitement, laughter):
+- Vivaldi: driving sequences, rapid notes, bright, unstoppable forward motion
+- Beethoven: dramatic power, motivic force, sudden silences, heroic struggle
+
+MEDIUM ENERGY (walking, flowing, conversation, curiosity, elegance, narrative):
+- Bach: contrapuntal, walking bass, intellectual, ordered
+- Mozart: singing melody, Alberti bass, elegant, balanced, graceful
+
+LOW ENERGY (melancholy, longing, dreams, night, twilight, memory, grief, love, solitude):
+- Chopin: nocturne, bel canto, chromatic, ornamental, intimate
+- Tchaikovsky: sweeping lyrical, passionate, emotional, romantic yearning
+- Debussy: impressionist, floating, atmospheric, colour without narrative
+
+EXAMPLES:
+"fire, dancers, chanting" -> Vivaldi, minor, fast (120-132)
+"village celebration" -> Vivaldi, major, fast (116-132)
+"triumphant homecoming" -> Beethoven, major, strong (96-112)
+"lonely autumn evening" -> Chopin, minor, slow (60-72)
+"gentle morning light" -> Debussy, major, slow (60-76)
+"deep grief" -> Chopin or Tchaikovsky, minor, slow (54-66)
+"intellectual puzzle" -> Bach, minor, moderate (84-96)
+
+Output ONLY a JSON object, no markdown:
 {
-  "composer": "Chopin",
-  "key": "Cm",
-  "tempo": 66,
-  "mood": "melancholy and yearning",
+  "composer": "Vivaldi",
+  "key": "Dm",
+  "tempo": 126,
+  "mood": "fierce and exhilarating, like flames rising",
   "programme_note": "Two or three sentences in Confucius voice — poetic, oblique, wise."
 }
 
-Key choices: Use minor keys (Cm, Gm, Dm, Am, Em) for dark/sad moods.
-Use major keys (C, G, D, F, Bb, Eb) for bright/happy moods.
-Tempo: 54-72 for slow, 76-96 for moderate, 100-132 for fast."""
+Keys: minor (Cm, Dm, Gm, Am, Em) for dark/fierce/sad; major (C, D, F, G, Bb) for bright/joyful
+Tempo: 54-72 slow, 76-96 moderate, 100-116 lively, 120-144 fast"""
 
 
 STYLE_MAPS = {
     "Bach": """STYLE — BACH:
-Melody: sequences (pattern repeated a step up/down), motor eighth notes, NO long held notes, imitation between voices
-Left hand: walking bass — stepwise, as melodic as right hand, contrary motion when possible
+V:1 melody: sequences (repeat pattern a step up/down), motor eighth notes, stepwise with 3rd/4th leaps, NO held notes
+V:2 bass: walking bass — stepwise movement, as melodic as right hand, contrary motion to melody, eighth notes
 Harmony: modulate to dominant or relative, seventh chords resolving by step, suspensions
-Rhythm: continuous eighth notes in at least one voice, strict time, terraced dynamics (sudden not gradual)
-AVOID: Alberti bass, waltz patterns, chromatic passing notes, sentimentality, rubato""",
+Rhythm: continuous eighth notes in bass, strict time, terraced dynamics (sudden ff to pp)
+AVOID: Alberti bass, waltz patterns, chromaticism, sentimentality""",
 
     "Mozart": """STYLE — MOZART:
-Melody: singing, graceful, clear 4-bar question/answer phrases, peak note at bar 3, one ornament per phrase
-Left hand: Alberti bass pattern (low-high-mid-high: C,2 G,2 E,2 G,2), light, never louder than melody
-Harmony: diatonic I-IV-V-vi, clear perfect cadences at phrase ends, modulate to dominant for Section B
-Rhythm: mix of quarter and eighth notes, at least one dotted rhythm per phrase, rests at cadences
-AVOID: chromatic harmony, dramatic sforzandi, continuous running eighths, anything effortful""",
+V:1 melody: singing, graceful, 4-bar question/answer, peak at bar 3, one ornament per phrase
+V:2 bass: Alberti bass — low note then chord alternating: C,2 G,2 E,2 G,2 — light throughout
+Harmony: diatonic I-IV-V-vi, clear cadences, modulate to dominant for B section
+Rhythm: quarters and eighths, at least one dotted rhythm per phrase
+AVOID: chromaticism, sforzandi, continuous running eighths, anything effortful""",
 
     "Beethoven": """STYLE — BEETHOVEN:
-Melody: short motivic cell of 2-4 notes, then developed — transposed, fragmented, inverted; dramatic leaps; rests as expression
-Left hand: heavy block chords on strong beats, sforzando accents, octave bass notes for weight and power
-Harmony: sudden subito pp after ff, diminished seventh chords, unexpected key changes, bold modulations
-Rhythm: dotted rhythms for drive, at least one bar of full silence for drama, accents on unexpected beats
-AVOID: long lyrical arching lines, gentle even motion, ornamental decoration, predictable progressions""",
+V:1 melody: short motivic cell (2-4 notes), transposed up/down, dramatic octave leaps, rests as drama
+V:2 bass: heavy block chords on strong beats, octave bass notes for power, sforzando accents
+Harmony: subito pp after ff, diminished sevenths, unexpected key changes
+Rhythm: dotted rhythms, at least one bar of silence (z8), accents on weak beats
+AVOID: long lyrical lines, gentle motion, ornamental decoration""",
 
     "Chopin": """STYLE — CHOPIN:
-Melody: long arching bel canto lines, chromatic passing notes (C to E via C# D D#), at least one trill and grace note, dotted rhythms
-Left hand: nocturne bass — deep single note on beat 1, mid-register chord on beats 2-3 (e.g. C,4 (EGc)4)
-Harmony: chromatic inner voices moving by semitone, Neapolitan chord (flat II), harmonic ambiguity, delayed resolution
-Rhythm: expressively varied — mix 3-unit, 2-unit, 1-unit notes; never metronomic; melody pushes and pulls
-AVOID: Alberti bass, walking bass, mechanical even motion, loud dramatic outbursts, block chords in melody""",
+V:1 melody: long arching bel canto lines, chromatic passing notes, trill (!trill!), grace notes, dotted rhythms
+V:2 bass: NOCTURNE BASS — deep bass note (2 units) then mid-register chord (6 units) per bar
+  Correct example: C,,2 (EGc)6 | G,,2 (DGb)6 | F,,2 (FAc)6 | G,,2 (GBd)6 |
+  NEVER use Alberti bass or walking bass for Chopin
+Harmony: chromatic inner voices, Neapolitan chord, delayed resolution
+Rhythm: expressively varied melody — mix 3+1+2+2, 4+2+2 patterns; never metronomic
+AVOID: Alberti bass, walking bass, mechanical motion, block chords in melody""",
 
     "Debussy": """STYLE — DEBUSSY:
-Melody: pentatonic (C D E G A) or whole-tone scale (C D E F# G# Bb), long held notes, much silence, avoid strong cadential arrival
-Left hand: sustained pedal note for multiple bars, parallel chord movement (same voicing sliding up/down by step)
-Harmony: parallel chords moving in blocks, ninth and eleventh chords for colour, NO dominant-tonic resolution
-Rhythm: long note values dominate, barlines are suggestions not walls, no strong beat-1 accent
-AVOID: stepwise diatonic scale runs, driving rhythm, clear perfect cadences, ornamental trills, Alberti bass""",
+V:1 melody: pentatonic or whole-tone scale, long held notes (4-8 units), much silence (z), no strong arrival
+V:2 bass: parallel chord blocks sliding by step, sustained pedal notes (4-8 units), no Alberti
+Harmony: parallel ninth chords, NO dominant-tonic resolution, colour not function
+Rhythm: long values dominate, no strong beat-1 accent
+AVOID: diatonic runs, rhythmic drive, clear cadences, Alberti bass""",
 
     "Tchaikovsky": """STYLE — TCHAIKOVSKY:
-Melody: sweeping arching lines that soar and sigh, characteristic two-note fall from peak (e.g. e2 d2), climax with mf or f
-Left hand: waltz bass (strong single note beat 1, light chords beats 2-3), or in 4/4 rich sustained inner voices
-Harmony: diminished seventh and augmented sixth chords, sequential harmony (progression repeated a step lower for yearning)
-Rhythm: waltz pulse if 3/4, long values at phrase peaks, implied ritardando at phrase ends
-AVOID: short motivic cells, pentatonic scales, mechanical regularity, sudden harsh dissonance""",
+V:1 melody: sweeping arching lines, soar then sigh downward (e2 d2 c2), climax at bar 5-6
+V:2 bass: sustained half-note chords — two chords per bar, inner voice movement between them
+  Correct example: (DFA)4 (EGB)4 | (CEG)4 (DFA)4 | — warm, rich, sustained
+Harmony: diminished seventh, augmented sixth, sequence a step lower for yearning
+Rhythm: lyrical and unhurried, long values at phrase peaks
+AVOID: short motivic cells, mechanical regularity, harsh dissonance""",
 
     "Vivaldi": """STYLE — VIVALDI:
-Melody: sequences relentlessly (C D E | D E F | E F G — same shape ascending/descending), rapid eighth/sixteenth notes, arpeggiated chord outlines
-Left hand: driving repeated notes or octaves on EVERY beat, never melodic, always rhythmically insistent
-Harmony: changes on every beat or half-bar, clear I-V-I, circle of fifths sequences, modulate to dominant for B section
-Rhythm: continuous driving pulse, NO rubato or hesitation, dotted rhythms for energy, accents on beat 1 of every bar
-AVOID: long held notes, chromatic ambiguity, slow harmonic rhythm, gentle lyrical lines, sustained bass notes"""
+V:1 melody: relentless sequences — same shape repeated a step up/down (D E F# | E F# G# | F# G# A)
+  Rapid eighth notes, dotted rhythms, arpeggiate chord outlines, NEVER hold notes
+V:2 bass: DRIVING REPEATED BASS — same note repeated every beat, or alternating with chord
+  Correct example: D,2 D,2 D,2 D,2 | A,,2 A,,2 A,,2 A,,2 | D,2 (D,F,A,)2 D,2 (D,F,A,)2 |
+  Bass must be insistent, rhythmic, never melodic, never held
+Harmony: changes every beat, clear I-V-I, circle of fifths, modulate to dominant
+Rhythm: continuous driving pulse, dotted rhythms, NO hesitation
+AVOID: held notes, chromaticism, slow harmony, lyrical passages"""
 }
 
 RELATIVES = {
@@ -91,51 +111,52 @@ RELATIVES = {
     "F":"Dm","Bb":"Gm","Eb":"Cm","Ab":"Fm","E":"C#m","B":"G#m"
 }
 
+
 def build_brief(composer, key, tempo, mood):
     style = STYLE_MAPS.get(composer, STYLE_MAPS["Chopin"])
-    key_b = RELATIVES.get(key, "Eb")
-    return f"""Compose a complete ternary form (ABA') piece with coda in the style of {composer}.
+    key_b = RELATIVES.get(key, "F")
+    return f"""Compose a ternary form piece (ABA') with coda in the style of {composer}.
+Mood: {mood}
 
-Section A: 8 bars, K:{key}, Q:1/4={tempo}, "pp", {mood} character
-Section B: 8 bars, K:{key_b}, slightly contrasting character, "mp"
-Section A': 8 bars, K:{key}, return to A character, "pp", embellished — must differ from A
-Coda: 4 bars, "pppp", dissolving, stepwise descent to silence
+Section A: 8 bars, K:{key}, Q:1/4={tempo}
+Section B: 8 bars, K:{key_b}, contrasting character
+Section A': 8 bars, K:{key}, return embellished
+Coda: 4 bars, dissolving descent
 
 {style}
 
-══ ABSOLUTE RULES — VIOLATING THESE WILL BREAK THE OUTPUT ══
+══ FORMAT — FOLLOW EXACTLY ══
 
-RULE 1 — MELODY IS A SINGLE LINE:
-One note at a time in Voice 1. Never two simultaneous notes.
-WRONG: (G4 c4)  ← two notes, this is a chord ✗
-CORRECT: G3 A B2 c2  ← single line moving note by note ✓
+Use this exact header structure:
+X:1
+T:Title
+M:4/4
+L:1/8
+Q:1/4={tempo}
+K:{key}
+V:1 clef=treble name="Melody"
+%%MIDI channel 1
+%%MIDI program 0
+[ALL 28 bars of Voice 1 here]
+V:2 clef=bass name="Bass"
+%%MIDI channel 2
+%%MIDI program 0
+[ALL 28 bars of Voice 2 here]
 
-RULE 2 — BAR LENGTH = EXACTLY 8 UNITS (L:1/8, M:4/4):
-Count carefully: whole=8, half=4, quarter=2, dotted-quarter=3, eighth=1, sixteenth=0.5
-CRITICAL: A alone = 1 unit (eighth note). A/ = 0.5 (sixteenth). Never use trailing slash.
-WRONG: G3 A/ B2 c2 = 3+0.5+2+2 = 7.5 units ✗
-CORRECT: G3 A B2 c2 = 3+1+2+2 = 8 units ✓
+CRITICAL RULES:
+1. Voice 1 comes FIRST (all 28 bars), then Voice 2 (all 28 bars). Never interleave.
+2. Voice 1: ONE note at a time. Never (G4 c4). Correct: G3 A B2 c2
+3. Every bar = exactly 8 units. eighth=1, quarter=2, dotted-quarter=3, half=4, whole=8
+   WARNING: A/ = 0.5 (too short). Use A (=1) not A/
+   WRONG: G3 A/ B2 c2 = 7.5  CORRECT: G3 A B2 c2 = 8
+4. Voice 2 must have exactly 28 bars. Never leave it empty.
+5. Mix note lengths — never all quarter notes (G2 A2 B2 c2 is mechanical and wrong)
+6. Dynamics in Voice 1 only, in double quotes: "pp" "mp" "mf"
 
-RULE 3 — ALL EXPRESSION MARKS REQUIRED:
-"pp", "mp", "mf", "p", "pppp" (dynamics in double quotes before notes)
-!crescendo(! and !crescendo)! — at least one per piece
-!diminuendo(! and !diminuendo)! — at least one per piece
-Slurs: (G3 A B2) over melodic phrases — group 3-6 notes
-!trill! on at least one note in Section A'
-!fermata! on the peak note of Section A', bar 4
-
-RULE 4 — RHYTHM MUST VARY:
-Never write all quarter notes (all 2-unit notes). Mix note lengths.
-WRONG: G2 A2 B2 c2  ← all quarters, sounds mechanical ✗
-CORRECT: G3 A B2 c2  ← dotted + eighth + quarter + quarter ✓
-
-RULE 5 — CODA DESCENDS:
-Melody must step downward bar by bar and end on a whole note: C8 or c8
-
-Output ONLY the ABC notation. No explanation. No markdown. Start with X:1."""
+Output ONLY the ABC notation. No explanation. No markdown. Start with X:1"""
 
 
-def call_deepseek(messages, system=None, temperature=0.7, max_tokens=3000):
+def call_deepseek(messages, system=None, temperature=0.7, max_tokens=3500):
     payload = {
         "model": "deepseek-chat",
         "messages": messages,
@@ -143,7 +164,7 @@ def call_deepseek(messages, system=None, temperature=0.7, max_tokens=3000):
         "max_tokens": max_tokens
     }
     if system:
-        payload["messages"] = [{"role":"system","content":system}] + messages
+        payload["messages"] = [{"role": "system", "content": system}] + messages
     r = requests.post(
         "https://api.deepseek.com/v1/chat/completions",
         headers={"Authorization": f"Bearer {DEEPSEEK_API_KEY}",
@@ -154,99 +175,125 @@ def call_deepseek(messages, system=None, temperature=0.7, max_tokens=3000):
     return r.json()["choices"][0]["message"]["content"]
 
 
+def postprocess_midi(mid_path, out_path):
+    """Apply per-channel velocity shaping and timing humanisation."""
+    try:
+        import mido
+        mid = mido.MidiFile(mid_path)
+        out = mido.MidiFile(ticks_per_beat=mid.ticks_per_beat, type=mid.type)
+        for track in mid.tracks:
+            new_track = mido.MidiTrack()
+            out.tracks.append(new_track)
+            note_idx = 0
+            for msg in track:
+                if msg.type == 'note_on' and msg.velocity > 0:
+                    ch = msg.channel
+                    if ch == 0:  # melody
+                        phrase_pos = (note_idx % 16) / 16.0
+                        shape = 1.0 - abs(phrase_pos - 0.5) * 0.55
+                        base_vel = int(70 + shape * 20)
+                        vel = max(48, min(100, base_vel + random.randint(-6, 6)))
+                        time_jitter = random.randint(-8, 8)
+                    else:  # bass — quieter, steady
+                        base_vel = 46
+                        vel = max(32, min(60, base_vel + random.randint(-4, 4)))
+                        time_jitter = 0
+                    note_idx += 1
+                    new_time = max(0, msg.time + time_jitter)
+                    new_track.append(msg.copy(velocity=vel, time=new_time))
+                else:
+                    new_track.append(msg)
+        out.save(out_path)
+        return True
+    except Exception:
+        return False
+
+
 def clean_abc(abc_text):
     lines = []
     for line in abc_text.split('\n'):
         if line.strip().startswith('```'): continue
-        if '%%MIDI pedal' in line: continue  # abc2midi doesn't support this
+        if '%%MIDI pedal' in line: continue
         lines.append(line)
     return '\n'.join(lines)
 
 
 def abc_to_mp3(abc_text):
     with tempfile.TemporaryDirectory() as d:
-        abc_f = os.path.join(d,'piece.abc')
-        mid_f = os.path.join(d,'piece.mid')
-        wav_f = os.path.join(d,'piece.wav')
-        mp3_f = os.path.join(d,'piece.mp3')
+        abc_f     = os.path.join(d, 'piece.abc')
+        mid_f     = os.path.join(d, 'piece.mid')
+        mid_pp_f  = os.path.join(d, 'piece_pp.mid')
+        wav_f     = os.path.join(d, 'piece.wav')
+        wav_rev_f = os.path.join(d, 'piece_reverb.wav')
+        mp3_f     = os.path.join(d, 'piece.mp3')
 
-        with open(abc_f,'w') as f:
+        with open(abc_f, 'w') as f:
             f.write(clean_abc(abc_text))
 
-        r = subprocess.run(['abc2midi', abc_f,'-o',mid_f],
-                          capture_output=True, text=True, timeout=30)
+        r = subprocess.run(['abc2midi', abc_f, '-o', mid_f],
+                           capture_output=True, text=True, timeout=30)
         if not os.path.exists(mid_f):
-            raise RuntimeError(f"abc2midi: {r.stderr[:300]}")
+            raise RuntimeError(f"abc2midi: {r.stderr[:400]}")
 
-        r = subprocess.run(['fluidsynth','-ni','-F',wav_f,'-r','44100',
-                           SOUNDFONT, mid_f],
-                          capture_output=True, text=True, timeout=60)
+        render_mid = mid_pp_f if postprocess_midi(mid_f, mid_pp_f) and os.path.exists(mid_pp_f) else mid_f
+
+        r = subprocess.run(['fluidsynth', '-ni', '-F', wav_f, '-r', '44100',
+                            SOUNDFONT, render_mid],
+                           capture_output=True, text=True, timeout=60)
         if not os.path.exists(wav_f):
-            raise RuntimeError(f"fluidsynth: {r.stderr[:300]}")
+            raise RuntimeError(f"fluidsynth: {r.stderr[:400]}")
 
-        # Apply subtle reverb (concert hall ambience) before encoding
-        wav_reverb = os.path.join(d, 'piece_reverb.wav')
-        sox_result = subprocess.run([
-            'sox', wav_f, wav_reverb,
-            'reverb', '25',   # reverb amount — subtle, not washed out
-            '50',             # HF damping — soften high end slightly
-            '80',             # room scale — medium hall
-            '100',            # stereo depth
-            '0.1',            # pre-delay ms
-        ], capture_output=True, text=True, timeout=30)
-        render_wav = wav_reverb if os.path.exists(wav_reverb) else wav_f
+        subprocess.run(['sox', wav_f, wav_rev_f,
+                        'reverb', '28', '55', '85', '100', '0.1'],
+                       capture_output=True, timeout=30)
+        render_wav = wav_rev_f if os.path.exists(wav_rev_f) else wav_f
 
-        r = subprocess.run(['lame','-b','192','-q','2', render_wav, mp3_f],
-                          capture_output=True, text=True, timeout=30)
+        r = subprocess.run(['lame', '-b', '192', '-q', '2', render_wav, mp3_f],
+                           capture_output=True, text=True, timeout=30)
         if not os.path.exists(mp3_f):
             raise RuntimeError(f"lame: {r.stderr[:300]}")
 
-        with open(mp3_f,'rb') as f:
+        with open(mp3_f, 'rb') as f:
             return base64.b64encode(f.read()).decode()
 
 
 @app.route('/')
 def index():
-    return send_from_directory('.','index.html')
+    return send_from_directory('.', 'index.html')
+
 
 @app.route('/compose', methods=['POST'])
 def compose():
     data = request.json or {}
-    prompt = data.get('prompt','').strip()
+    prompt = data.get('prompt', '').strip()
     if not prompt:
-        return jsonify({'error':'No prompt provided'}), 400
+        return jsonify({'error': 'No prompt provided'}), 400
+    raw = ''
     try:
-        # Confucius interprets
-        raw = call_deepseek([{"role":"user","content":prompt}],
-                           system=CONFUCIUS_SYSTEM, temperature=0.5)
-        json_text = re.sub(r'```json|```','',raw).strip()
+        raw = call_deepseek([{"role": "user", "content": prompt}],
+                            system=CONFUCIUS_SYSTEM, temperature=0.5)
+        json_text = re.sub(r'```json|```', '', raw).strip()
         interp = json.loads(json_text)
 
-        composer = interp.get('composer','Chopin')
-        key      = interp.get('key','Cm')
+        composer = interp.get('composer', 'Chopin')
+        key      = interp.get('key', 'Cm')
         tempo    = interp.get('tempo', 66)
-        mood     = interp.get('mood','reflective')
-        note     = interp.get('programme_note','')
+        mood     = interp.get('mood', 'reflective')
+        note     = interp.get('programme_note', '')
 
-        # Compose
         brief = build_brief(composer, key, tempo, mood)
-        abc = call_deepseek([{"role":"user","content":brief}],
-                           temperature=0.6, max_tokens=3000)
-        abc = re.sub(r'```abc|```','',abc).strip()
+        abc = call_deepseek([{"role": "user", "content": brief}],
+                            temperature=0.6, max_tokens=3500)
+        abc = re.sub(r'```abc|```', '', abc).strip()
 
-        # Render
         mp3 = abc_to_mp3(abc)
 
-        return jsonify({
-            'abc': abc, 'mp3': mp3,
-            'composer': composer, 'key': key,
-            'tempo': tempo, 'mood': mood,
-            'programme_note': note
-        })
+        return jsonify({'abc': abc, 'mp3': mp3, 'composer': composer,
+                        'key': key, 'tempo': tempo, 'mood': mood,
+                        'programme_note': note})
 
     except json.JSONDecodeError:
-        return jsonify({'error':'Confucius could not interpret that prompt',
-                       'raw': raw}), 500
+        return jsonify({'error': 'Confucius could not parse the mood', 'raw': raw}), 500
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
