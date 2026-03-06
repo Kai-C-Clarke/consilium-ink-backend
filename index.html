@@ -456,8 +456,8 @@
       <li id="step1">Interpreting the mood</li>
       <li id="step2">Selecting composer and key</li>
       <li id="step3">Composing the piece</li>
-      <li id="step4">Rendering with FluidSynth</li>
-      <li id="step5">Preparing the score</li>
+      <li id="step4">Reviewing against composer style</li>
+      <li id="step5">Rendering with FluidSynth</li>
     </ul>
   </div>
 
@@ -488,6 +488,11 @@
     </div>
 
     <details>
+      <summary>Quality Review</summary>
+      <div id="critiqueBox" style="padding:0.75rem 0; font-family: Josefin Sans, sans-serif; font-size:0.65rem; letter-spacing:0.1em;"></div>
+    </details>
+
+    <details>
       <summary>ABC Notation Source</summary>
       <pre id="abcSource"></pre>
     </details>
@@ -511,8 +516,8 @@ const stepMessages = [
   'Confucius considers your words…',
   'Selecting composer and key…',
   'Composing the piece…',
-  'Rendering with FluidSynth…',
-  'Preparing the score…'
+  'Reviewing against composer style…',
+  'Rendering with FluidSynth…'
 ];
 
 function startLoadingSteps() {
@@ -601,6 +606,20 @@ function renderResult(data) {
       <span class="meta-value">${data.mood}</span>
     </div>
   `;
+
+  // Critique display
+  if (data.critique) {
+    const c = data.critique;
+    const color = c.failed === 0 ? '#6a9' : c.failed <= 2 ? '#ca6' : '#a66';
+    const revised = c.revised ? ' · revised' : '';
+    const failures = c.failures && c.failures.length
+      ? '<br><span style="opacity:0.5">failed: ' + c.failures.join(', ') + (c.failures_after_revision ? ' → ' + (c.failures_after_revision.join(', ') || 'none') : '') + '</span>'
+      : '';
+    document.getElementById('critiqueBox').innerHTML =
+      '<span style="color:' + color + '">' +
+      c.passed + '/' + c.total + ' criteria passed' + revised + failures +
+      '</span>';
+  }
 
   // ABC source
   currentAbc = data.abc;
