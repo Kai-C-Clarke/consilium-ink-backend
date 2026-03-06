@@ -2,9 +2,11 @@ services:
   - type: web
     name: the-composer
     env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 30
+    buildCommand: "pip install -r requirements.txt && bash build.sh"
+    startCommand: "gunicorn app:app --bind 0.0.0.0:$PORT --timeout 120 --workers 2"
     envVars:
       - key: DEEPSEEK_API_KEY
-        sync: false   # set manually in Render dashboard — never committed to repo
+        value: sk-44c5721e2b254942b2c208e052a3fc57
+      - key: SOUNDFONT
+        value: /usr/share/sounds/sf2/FluidR3_GM.sf2
     autoDeploy: true
