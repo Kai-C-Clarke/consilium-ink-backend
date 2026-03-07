@@ -243,25 +243,102 @@ def lyria_generate(prompt: str, negative: str) -> bytes:
 # AUDIO POST-PROCESSING
 # ──────────────────────────────────────────────────────────
 
-def wav_to_mp3(wav_bytes: bytes, tempo: int = 120) -> bytes:
+def find_loop_point(wav_path: str, tempo: int) -> float:
+    """
+    Scan bar boundaries 8-24 and return the one with lowest RMS energy
+    — most likely a phrase breath or cadence point.
+    """
+    import wave as wavemod
+    import struct
+    import math
+
+    bar_secs   = (60.0 / max(tempo, 40)) * 4
+    window     = 0.08
+
+    with wavemod.open(wav_path, 'rb') as wf:
+        rate      = wf.getframerate()
+        channels  = wf.getnchannels()
+        sampwidth = wf.getsampwidth()
+        n_frames  = wf.getnframes()
+        raw       = wf.readframes(n_frames)
+
+    fmt     = {1: 'b', 2: 'h', 4: 'i'}.get(sampwidth, 'h')
+    samples = struct.unpack(f'<{len(raw)//sampwidth}{fmt}', raw)
+    if channels > 1:
+        samples = [sum(samples[i:i+channels])//channels
+                   for i in range(0, len(samples), channels)]
+
+    total_secs = len(samples) / rate
+    win_frames = int(window * rate)
+    best_pos   = bar_secs * 16
+    best_rms   = float('inf')
+
+    for bar in range(8, 25):
+        pos_secs = bar * bar_secs
+        if pos_secs + window >= total_secs:
+            break
+        centre = int(pos_secs * rate)
+        lo     = max(0, centre - win_frames // 2)
+        hi     = min(len(samples), lo + win_frames)
+        chunk  = samples[lo:hi]
+        if chunk:
+            rms = math.sqrt(sum(s * s for s in chunk) / len(chunk))
+            if rms < best_rms:
+                best_rms = rms
+                best_pos = pos_secs
+
+    return best_pos
+
+
+def wav_to_mp3(wav_bytes: bytes, tempo: int = 120, loops: int = 2) -> bytes:
     with tempfile.TemporaryDirectory() as tmp:
         wav_in   = os.path.join(tmp, "in.wav")
+        wav_seg  = os.path.join(tmp, "seg.wav")
+        wav_loop = os.path.join(tmp, "loop.wav")
         wav_verb = os.path.join(tmp, "verb.wav")
         mp3_out  = os.path.join(tmp, "out.mp3")
+
+        cf_secs  = 0.25
+        fade_out = 3.0
 
         with open(wav_in, "wb") as f:
             f.write(wav_bytes)
 
-        # Reverb + 3s fade-out
-        sox1 = subprocess.run(
-            ["sox", wav_in, wav_verb,
-             "reverb", "28", "55", "85", "100", "0.1",
-             "fade", "t", "0", "0", "3"],
+        # 1. Find best phrase-end point
+        loop_secs = find_loop_point(wav_in, tempo)
+
+        # 2. Trim to that point
+        subprocess.run(
+            ["sox", wav_in, wav_seg, "trim", "0", str(loop_secs)],
+            capture_output=True, timeout=30
+        )
+        seg = wav_seg if os.path.exists(wav_seg) else wav_in
+
+        # 3. Splice N+1 copies with crossfade at each join
+        join_points = [f"{loop_secs * i},{cf_secs}" for i in range(1, loops + 1)]
+        sox_loop = subprocess.run(
+            ["sox"] + [seg] * (loops + 1) + [wav_loop, "splice", "-q"] + join_points,
             capture_output=True, timeout=60
         )
-        final = wav_verb if sox1.returncode == 0 else wav_in
+        looped = wav_loop if sox_loop.returncode == 0 else seg
 
-        # lame encode
+        # 4. Reverb on the looped audio
+        subprocess.run(
+            ["sox", looped, wav_verb,
+             "reverb", "28", "55", "85", "100", "0.1"],
+            capture_output=True, timeout=60
+        )
+        verb = wav_verb if os.path.exists(wav_verb) else looped
+
+        # 5. Fade out last 3s — SoX knows the exact duration now
+        wav_fade = os.path.join(tmp, "fade.wav")
+        subprocess.run(
+            ["sox", verb, wav_fade, "fade", "t", "0", "0", str(fade_out)],
+            capture_output=True, timeout=60
+        )
+        final = wav_fade if os.path.exists(wav_fade) else verb
+
+        # 6. Encode to MP3
         lame = subprocess.run(
             ["lame", "-b", "192", "-q", "2", final, mp3_out],
             capture_output=True, timeout=60
