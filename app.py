@@ -97,61 +97,54 @@ def call_confucius(user_prompt: str) -> dict:
 # ──────────────────────────────────────────────────────────
 
 LYRIA_STYLE_PROMPTS = {
-    # Vivaldi: relentless violin sequences, terraced dynamics, bright continuo snap
+    # Vivaldi: bright, darting, relentless forward motion
     "Vivaldi":     (
-        "Solo violin over harpsichord and pizzicato strings, rapid ascending and descending "
-        "sequence patterns repeating at different pitches, crisp detached bowing, snapping "
-        "continuo bass on every beat, sudden loud-soft contrasts, bright and propulsive, "
-        "{key}, {tempo} BPM, no brass, no drums"
+        "Bright solo violin darting through rapid repeated figures over plucked strings and harpsichord, "
+        "crisp and energetic, sudden shifts between loud and soft, sparkling and propulsive, "
+        "baroque chamber ensemble, {key}, {tempo} BPM"
     ),
 
-    # Bach: interlocking independent voices, walking bass, ordered inevitability
+    # Bach: orderly voices in conversation, inevitably interlocking
     "Bach":        (
-        "Harpsichord with four independent polyphonic voices weaving around each other, "
-        "a subject introduced alone then answered by a second voice, steady walking bass, "
-        "ornamental trills on cadences, voices entering one by one, ordered and inevitable, "
-        "{key}, {tempo} BPM, no strings, no drums"
+        "Harpsichord with several independent melodic lines weaving around each other in strict order, "
+        "a theme introduced then answered, walking bass below, ornamented and precise, "
+        "baroque keyboard, {key}, {tempo} BPM"
     ),
 
-    # Mozart: singing melody over Alberti bass, woodwind dialogue, clean cadences
+    # Mozart: singing and elegant, light and transparent
     "Mozart":      (
-        "Piano with singing right-hand melody over steady Alberti bass left hand, "
-        "oboe and flute echoing the theme in answer, clear four-bar phrases with question "
-        "and response, graceful turn ornaments, bright clean cadences, light and transparent, "
+        "Piano with a clear singing melody, light string accompaniment, woodwind echoes, "
+        "balanced and elegant phrases, graceful and transparent, classical chamber style, "
         "{key}, {tempo} BPM"
     ),
 
-    # Beethoven: short rhythmic motif hammered and developed, volcanic contrasts
+    # Beethoven: stormy, forceful, dramatic silences and outbursts
     "Beethoven":   (
-        "Full orchestra with a short insistent rhythmic motif hammered by strings, "
-        "sudden silence then fortissimo brass and timpani explosion, theme torn apart "
-        "and rebuilt in new keys, relentless driving development, heroic horn calls, "
-        "volcanic sudden soft-to-loud surges, {key}, {tempo} BPM"
+        "Full orchestra with driving strings, sudden dramatic silences followed by powerful brass and timpani, "
+        "forceful and stormy, heroic and determined, building to overwhelming climaxes, "
+        "{key}, {tempo} BPM"
     ),
 
-    # Chopin: bel canto right hand singing freely, left hand arpeggios as cushion
+    # Chopin: intimate solo piano, freely breathing melody, rich harmony
     "Chopin":      (
-        "Solo piano, right hand singing an expressive long-breathed melody with subtle "
-        "rhythmic freedom, left hand flowing broken-chord arpeggios spreading warmly "
-        "across the keyboard, chromatic inner harmonies that ache and resolve, "
-        "intimate and confessional, {key}, {tempo} BPM, no orchestra, no other instruments"
+        "Solo piano with a freely breathing singing melody in the right hand, "
+        "rich flowing accompaniment in the left hand spreading warmly, "
+        "intimate and expressive, romantic and personal, {key}, {tempo} BPM"
     ),
 
-    # Tchaikovsky: soaring string theme, yearning sequence, climax with brass surge
+    # Tchaikovsky: sweeping string melody rising with yearning intensity
     "Tchaikovsky": (
-        "Strings playing a broad soaring melody that rises and falls with yearning, "
-        "sequence pushing higher each repetition toward an emotional peak, cellos carrying "
-        "a rich counter-melody below, sudden warm brass chord at the climax, "
-        "deeply felt and expressive, {key}, {tempo} BPM, no piano, no drums"
+        "Strings playing a broad sweeping melody that rises with deep feeling, "
+        "rich cello counter-melody beneath, warm and yearning, building to an emotional peak "
+        "with full orchestra, deeply expressive, {key}, {tempo} BPM"
     ),
 
-    # Debussy: cascading piano arpeggios, whole-tone chords dissolving, like light on water
+    # Debussy: hazy, shimmering, dissolving harmonies, like mist or water
     "Debussy":     (
-        "Solo piano, left hand cascading broken arpeggios rising and falling like waves, "
-        "right hand pentatonic melody floating delicately above, parallel ninth chords "
-        "dissolving into silence, whole-tone scale passages blurring the harmony, "
-        "soft sustain pedal throughout, like light shimmering on still water, "
-        "{key}, {tempo} BPM, no orchestra, no drums, no violin"
+        "Solo piano with a delicate floating melody over soft rippling accompaniment, "
+        "harmonies that blur and dissolve without resolving, hazy and shimmering, "
+        "like light on water or mist in the morning, gentle and atmospheric, "
+        "{key}, {tempo} BPM"
     ),
 }
 
