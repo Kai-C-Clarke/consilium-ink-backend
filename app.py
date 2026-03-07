@@ -97,13 +97,52 @@ def call_confucius(user_prompt: str) -> dict:
 # ──────────────────────────────────────────────────────────
 
 LYRIA_STYLE_PROMPTS = {
-    "Vivaldi":     "Baroque violin concerto, harpsichord and strings, fast energetic sequences, {key}, {tempo} BPM",
-    "Bach":        "Baroque harpsichord fugue, polyphonic counterpoint, steady and intricate, {key}, {tempo} BPM",
-    "Mozart":      "Classical piano concerto, elegant strings, graceful and refined, {key}, {tempo} BPM",
-    "Beethoven":   "Romantic symphony orchestra, dramatic and powerful, brass and timpani, {key}, {tempo} BPM",
-    "Chopin":      "Romantic solo piano nocturne, lyrical melody, expressive and tender, {key}, {tempo} BPM",
-    "Tchaikovsky": "Romantic orchestral, sweeping strings, lush and emotional, {key}, {tempo} BPM",
-    "Debussy":     "Impressionist piano, atmospheric and dreamlike, shimmering harmonies, {key}, {tempo} BPM",
+    "Vivaldi":     (
+        "Bright solo violin darting through rapid repeated figures over plucked strings and harpsichord, "
+        "crisp and energetic, sudden shifts between loud and soft, sparkling and propulsive, "
+        "baroque chamber ensemble, {key}, {tempo} BPM"
+    ),
+    "Bach":        (
+        "Harpsichord with several independent melodic lines weaving around each other in strict order, "
+        "a theme introduced then answered, walking bass below, ornamented and precise, "
+        "baroque keyboard, {key}, {tempo} BPM"
+    ),
+    "Mozart":      (
+        "Piano with a clear singing melody, light string accompaniment, woodwind echoes, "
+        "balanced and elegant phrases, graceful and transparent, classical chamber style, "
+        "{key}, {tempo} BPM"
+    ),
+    "Beethoven":   (
+        "Full orchestra with driving strings, sudden dramatic silences followed by powerful brass, "
+        "forceful and stormy, heroic and determined, building to overwhelming climaxes, "
+        "purely orchestral, no drum kit, {key}, {tempo} BPM"
+    ),
+    "Chopin":      (
+        "Solo piano with a freely breathing singing melody in the right hand, "
+        "rich flowing accompaniment in the left hand spreading warmly, "
+        "intimate and expressive, romantic and personal, {key}, {tempo} BPM"
+    ),
+    "Tchaikovsky": (
+        "Strings playing a broad sweeping melody that rises with deep feeling, "
+        "rich cello counter-melody beneath, warm and yearning, building to an emotional peak "
+        "with full orchestra, deeply expressive, {key}, {tempo} BPM"
+    ),
+    "Debussy":     (
+        "Solo piano with a delicate floating melody over soft rippling accompaniment, "
+        "harmonies that blur and dissolve without resolving, hazy and shimmering, "
+        "like light on water or mist in the morning, gentle and atmospheric, "
+        "{key}, {tempo} BPM"
+    ),
+}
+
+LYRIA_NEGATIVE_PROMPTS = {
+    "Vivaldi":     "vocals, singing, piano, drums, drum kit, electronic, synthesizer, electric guitar, pop, modern, brass",
+    "Bach":        "vocals, singing, drums, drum kit, electronic, synthesizer, electric guitar, pop, modern, orchestra, brass",
+    "Mozart":      "vocals, singing, drums, drum kit, electronic, synthesizer, electric guitar, pop, modern",
+    "Beethoven":   "vocals, singing, drums, drum kit, kick drum, electronic, synthesizer, electric guitar, pop, modern, jazz",
+    "Chopin":      "vocals, singing, drums, drum kit, electronic, synthesizer, electric guitar, pop, modern, orchestra, violin, trumpet",
+    "Tchaikovsky": "vocals, singing, drums, drum kit, electronic, synthesizer, electric guitar, pop, modern, jazz, piano",
+    "Debussy":     "vocals, singing, drums, drum kit, electronic, synthesizer, electric guitar, pop, modern, trumpet, trombone, violin, orchestra",
 }
 
 MOOD_MAP = {
@@ -130,9 +169,8 @@ def build_lyria_prompt(c: dict) -> tuple:
     style    = style.format(key=key, tempo=tempo)
     mood_str = MOOD_MAP.get(mood, mood)
 
-    prompt = f"{style}, {mood_str}, instrumental"
-
-    negative = "vocals, singing, drums, electronic, synthesizer, electric guitar, pop, modern"
+    prompt   = f"{style}, {mood_str}, instrumental"
+    negative = LYRIA_NEGATIVE_PROMPTS.get(composer, "vocals, singing, drums, drum kit, electronic, synthesizer, electric guitar, pop, modern")
 
     return prompt, negative
 
