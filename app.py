@@ -34,7 +34,7 @@ from google.oauth2 import service_account
 # APP
 # ──────────────────────────────────────────────────────────
 
-app = Flask(__name__, static_folder=".", static_url_path="")
+app = Flask(__name__)
 CORS(app)
 
 
@@ -97,48 +97,13 @@ def call_confucius(user_prompt: str) -> dict:
 # ──────────────────────────────────────────────────────────
 
 LYRIA_STYLE_PROMPTS = {
-    "Vivaldi": (
-        "Baroque orchestral concerto, Antonio Vivaldi style, key of {key}, {tempo} BPM, "
-        "solo violin lead over string orchestra and harpsichord continuo, "
-        "rapid sequences ascending and descending, driving eighth-note rhythm, "
-        "bright and energetic, Baroque period, concerto grosso"
-    ),
-    "Bach": (
-        "Baroque keyboard music, Johann Sebastian Bach style, key of {key}, {tempo} BPM, "
-        "harpsichord or pipe organ, intricate polyphonic counterpoint, "
-        "multiple independent voices weaving together, fugue-like, "
-        "steady rhythmic pulse, ornamental trills, Lutheran church gravitas"
-    ),
-    "Mozart": (
-        "Classical period piano concerto, Wolfgang Amadeus Mozart style, key of {key}, {tempo} BPM, "
-        "elegant piano melody with light string accompaniment, Alberti bass, "
-        "balanced phrasing and graceful ornamentation, Viennese Classical, "
-        "witty and refined, chamber orchestra"
-    ),
-    "Beethoven": (
-        "Early Romantic orchestral, Ludwig van Beethoven style, key of {key}, {tempo} BPM, "
-        "full symphony orchestra, dramatic dynamic contrasts, powerful brass and timpani, "
-        "heroic and stormy, motivic development, intense and passionate, "
-        "Romantic grandeur, fortissimo climaxes"
-    ),
-    "Chopin": (
-        "Romantic solo piano nocturne, Frédéric Chopin style, key of {key}, {tempo} BPM, "
-        "lyrical singing melody in right hand, flowing arpeggios in left hand, "
-        "intimate and emotional, expressive rubato, rich Romantic harmonies, "
-        "tender and introspective, bel canto influenced"
-    ),
-    "Tchaikovsky": (
-        "Romantic orchestral, Pyotr Ilyich Tchaikovsky style, key of {key}, {tempo} BPM, "
-        "full symphony orchestra, sweeping string melodies, lush and emotional, "
-        "Russian Romantic character, nostalgic and yearning, "
-        "rich orchestration with warm brass and woodwinds, big lyrical climax"
-    ),
-    "Debussy": (
-        "French Impressionist piano, Claude Debussy style, key of {key}, {tempo} BPM, "
-        "solo piano or small ensemble, whole-tone scales and parallel chords, "
-        "shimmering atmospheric harmonies, dreamlike and evocative, "
-        "colour and texture over melody, fluid and floating, gentle and mysterious"
-    ),
+    "Vivaldi":     "Baroque violin concerto, harpsichord and strings, fast energetic sequences, {key}, {tempo} BPM",
+    "Bach":        "Baroque harpsichord fugue, polyphonic counterpoint, steady and intricate, {key}, {tempo} BPM",
+    "Mozart":      "Classical piano concerto, elegant strings, graceful and refined, {key}, {tempo} BPM",
+    "Beethoven":   "Romantic symphony orchestra, dramatic and powerful, brass and timpani, {key}, {tempo} BPM",
+    "Chopin":      "Romantic solo piano nocturne, lyrical melody, expressive and tender, {key}, {tempo} BPM",
+    "Tchaikovsky": "Romantic orchestral, sweeping strings, lush and emotional, {key}, {tempo} BPM",
+    "Debussy":     "Impressionist piano, atmospheric and dreamlike, shimmering harmonies, {key}, {tempo} BPM",
 }
 
 MOOD_MAP = {
@@ -165,17 +130,9 @@ def build_lyria_prompt(c: dict) -> tuple:
     style    = style.format(key=key, tempo=tempo)
     mood_str = MOOD_MAP.get(mood, mood)
 
-    prompt = (
-        f"{style}, {mood_str}, "
-        "instrumental only, no vocals, "
-        "professional classical music recording, high fidelity"
-    )
+    prompt = f"{style}, {mood_str}, instrumental"
 
-    negative = (
-        "drums, drum kit, electronic beats, synthesizer, electric guitar, "
-        "distortion, bass guitar, vocals, singing, lyrics, rap, hip hop, "
-        "jazz, pop, modern music, ambient noise, low quality"
-    )
+    negative = "vocals, singing, drums, electronic, synthesizer, electric guitar, pop, modern"
 
     return prompt, negative
 
@@ -262,11 +219,6 @@ def wav_to_mp3(wav_bytes: bytes) -> bytes:
 # ──────────────────────────────────────────────────────────
 # ROUTES
 # ──────────────────────────────────────────────────────────
-
-@app.route("/")
-def index():
-    return app.send_static_file("index.html")
-
 
 @app.route("/health")
 def health():
