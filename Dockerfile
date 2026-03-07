@@ -1,12 +1,10 @@
 FROM python:3.11-slim
 
-# Install system audio tools
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    fluidsynth \
-    fluid-soundfont-gm \
-    abcmidi \
-    lame \
+# Audio tools: sox for reverb, lame for MP3 encoding
+# (fluidsynth/abcmidi no longer needed — Lyria outputs WAV directly)
+RUN apt-get update && apt-get install -y \
     sox \
+    lame \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -16,9 +14,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-ENV SOUNDFONT=/usr/share/sounds/sf2/FluidR3_GM.sf2
-ENV PORT=10000
-
 EXPOSE 10000
 
-CMD gunicorn app:app --bind 0.0.0.0:$PORT --timeout 120 --workers 2
+CMD ["gunicorn", "--bind", "0.0.0.0:10000", "--timeout", "120", "--workers", "2", "app:app"]
