@@ -249,22 +249,30 @@ def wav_to_mp3(wav_bytes: bytes, tempo: int = 120) -> bytes:
         wav_verb = os.path.join(tmp, "verb.wav")
         mp3_out  = os.path.join(tmp, "out.mp3")
 
+        wav_pad  = os.path.join(tmp, "pad.wav")
+
         with open(wav_in, "wb") as f:
             f.write(wav_bytes)
 
-        # SoX: reverb first, then pad 1.5s silence at start, then 3s fade-out
-        sox = subprocess.run(
+        # Step 1: reverb + fade-out on the dry audio
+        sox1 = subprocess.run(
             ["sox", wav_in, wav_verb,
              "reverb", "28", "55", "85", "100", "0.1",
-             "pad", "1.5", "0",
              "fade", "t", "0", "0", "3"],
             capture_output=True, timeout=60
         )
-        src = wav_verb if sox.returncode == 0 else wav_in
+        src = wav_verb if sox1.returncode == 0 else wav_in
+
+        # Step 2: prepend 1.5s silence so first note has room to breathe
+        sox2 = subprocess.run(
+            ["sox", src, wav_pad, "pad", "1.5", "0"],
+            capture_output=True, timeout=60
+        )
+        final = wav_pad if sox2.returncode == 0 else src
 
         # lame encode
         lame = subprocess.run(
-            ["lame", "-b", "192", "-q", "2", src, mp3_out],
+            ["lame", "-b", "192", "-q", "2", final, mp3_out],
             capture_output=True, timeout=60
         )
         if lame.returncode != 0:
