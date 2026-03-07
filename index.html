@@ -6,7 +6,7 @@
 <title>The Composer</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=IM+Fell+English:ital@0;1&family=Josefin+Sans:wght@100;300&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/abcjs@6.2.2/dist/abcjs-basic-min.js"></script>
+
 
 <style>
   :root {
@@ -331,61 +331,6 @@
     text-align: right;
   }
 
-  /* ── Score ── */
-  .score-section {
-    margin-bottom: 2rem;
-  }
-
-  .section-title {
-    font-family: 'Josefin Sans', sans-serif;
-    font-weight: 100;
-    font-size: 0.6rem;
-    letter-spacing: 0.4em;
-    text-transform: uppercase;
-    color: var(--gold);
-    opacity: 0.6;
-    margin-bottom: 1rem;
-  }
-
-  #score-container {
-    background: var(--paper);
-    padding: 1.5rem;
-    border-radius: 1px;
-    overflow-x: auto;
-  }
-  #score-container svg { max-width: 100%; height: auto; }
-
-  /* ── ABC text ── */
-  details {
-    margin-top: 1rem;
-  }
-  summary {
-    font-family: 'Josefin Sans', sans-serif;
-    font-weight: 100;
-    font-size: 0.6rem;
-    letter-spacing: 0.3em;
-    text-transform: uppercase;
-    color: var(--dim);
-    cursor: pointer;
-    padding: 0.5rem 0;
-    opacity: 0.6;
-    transition: opacity 0.2s;
-  }
-  summary:hover { opacity: 1; }
-
-  pre {
-    background: rgba(0,0,0,0.3);
-    border: 1px solid rgba(255,255,255,0.05);
-    padding: 1.25rem;
-    font-family: 'Courier New', monospace;
-    font-size: 0.75rem;
-    line-height: 1.6;
-    color: rgba(245,240,232,0.6);
-    overflow-x: auto;
-    margin-top: 0.5rem;
-    white-space: pre-wrap;
-  }
-
   /* ── Again button ── */
   .btn-again {
     display: inline-block;
@@ -482,21 +427,7 @@
       </div>
     </div>
 
-    <div class="score-section">
-      <div class="section-title">Score</div>
-      <div id="score-container"></div>
-    </div>
-
-    <details>
-      <summary>Quality Review</summary>
-      <div id="critiqueBox" style="padding:0.75rem 0; font-family: Josefin Sans, sans-serif; font-size:0.65rem; letter-spacing:0.1em;"></div>
-    </details>
-
-    <details>
-      <summary>ABC Notation Source</summary>
-      <pre id="abcSource"></pre>
-    </details>
-
+    <button class="btn-again" onclick="downloadMp3()">↓ Download MP3</button>
     <button class="btn-again" onclick="reset()">← Compose another</button>
 
   </div>
@@ -507,7 +438,9 @@
 
 <script>
 let currentAudio = null;
-let currentAbc = '';
+let currentMp3   = null;   // base64 of last generated MP3
+let currentMeta  = {};     // composer + mood for filename
+
 let stepInterval = null;
 let currentStep = 0;
 
@@ -607,39 +540,10 @@ function renderResult(data) {
     </div>
   `;
 
-  // Critique display
-  if (data.critique) {
-    const c = data.critique;
-    const color = c.failed === 0 ? '#6a9' : c.failed <= 2 ? '#ca6' : '#a66';
-    const revised = c.revised ? ' · revised' : '';
-    const failures = c.failures && c.failures.length
-      ? '<br><span style="opacity:0.5">failed: ' + c.failures.join(', ') + (c.failures_after_revision ? ' → ' + (c.failures_after_revision.join(', ') || 'none') : '') + '</span>'
-      : '';
-    document.getElementById('critiqueBox').innerHTML =
-      '<span style="color:' + color + '">' +
-      c.passed + '/' + c.total + ' criteria passed' + revised + failures +
-      '</span>';
-  }
-
-  // ABC source
-  currentAbc = data.abc;
-  document.getElementById('abcSource').textContent = data.abc;
-
-  // Render score
-  ABCJS.renderAbc('score-container', data.abc, {
-    responsive: 'resize',
-    staffwidth: 700,
-    scale: 0.9,
-    stafftopmargin: 20,
-    staffbottommargin: 20,
-    paddingtop: 15,
-    paddingbottom: 15,
-    paddingleft: 15,
-    paddingright: 15,
-  });
-
   // Audio
   const audio = document.getElementById('audioEl');
+  currentMp3  = data.mp3;
+  currentMeta = { composer: data.composer, mood: data.mood };
   audio.src = 'data:audio/mp3;base64,' + data.mp3;
   audio.load();
 
@@ -653,6 +557,17 @@ function renderResult(data) {
   // Show result
   document.getElementById('result').classList.add('active');
   document.getElementById('composeBtn').disabled = false;
+}
+
+function downloadMp3() {
+  if (!currentMp3) return;
+  const composer = (currentMeta.composer || 'composer').toLowerCase();
+  const mood     = (currentMeta.mood     || 'piece').toLowerCase();
+  const filename = `the-composer_${composer}_${mood}.mp3`;
+  const a        = document.createElement('a');
+  a.href         = 'data:audio/mp3;base64,' + currentMp3;
+  a.download     = filename;
+  a.click();
 }
 
 function togglePlay() {
