@@ -415,16 +415,16 @@ def find_loop_point(wav_path: str, tempo: int) -> float:
 def find_midpoint(wav_path: str, tempo: int) -> float:
     """
     Find the downbeat kick onset closest to the midpoint of the clip.
-    Uses low-frequency energy onset detection so the edit snaps to a
-    natural bar boundary — B section starts clean on beat 1.
+    Detects low-frequency energy onsets using pure Python — no numpy needed.
+    Snaps the edit to just before a kick so B starts clean on beat 1.
     """
     import wave as wavemod
     import struct
-    import numpy as np
+    import math
 
-    bar_secs  = (60.0 / max(tempo, 40)) * 4
-    hop_secs  = 0.01        # 10ms analysis frames
-    pre_roll  = 0.02        # step back 20ms before the onset for the splice
+    bar_secs = (60.0 / max(tempo, 40)) * 4
+    hop_secs = 0.01        # 10ms analysis frames
+    pre_roll = 0.02        # step back 20ms before onset for clean splice
 
     with wavemod.open(wav_path, 'rb') as wf:
         rate      = wf.getframerate()
@@ -434,65 +434,62 @@ def find_midpoint(wav_path: str, tempo: int) -> float:
         raw       = wf.readframes(n_frames)
 
     fmt     = {1: 'b', 2: 'h', 4: 'i'}.get(sampwidth, 'h')
-    samples = np.array(struct.unpack(f'<{len(raw)//sampwidth}{fmt}', raw),
-                       dtype=np.float32)
+    samples = list(struct.unpack(f'<{len(raw)//sampwidth}{fmt}', raw))
     if channels > 1:
-        samples = samples.reshape(-1, channels).mean(axis=1)
+        samples = [sum(samples[i:i+channels])//channels
+                   for i in range(0, len(samples), channels)]
 
     total_secs = len(samples) / rate
     hop        = max(1, int(hop_secs * rate))
+    n_hops     = len(samples) // hop
 
-    # Low-pass: keep only low-frequency energy by downsampling envelope
-    # Square the signal and compute RMS over each hop window
-    n_hops  = len(samples) // hop
-    energy  = np.array([
-        np.sqrt(np.mean(samples[i*hop:(i+1)*hop] ** 2))
-        for i in range(n_hops)
-    ])
+    # RMS energy per hop
+    energy = []
+    for i in range(n_hops):
+        chunk = samples[i*hop:(i+1)*hop]
+        rms   = math.sqrt(sum(s*s for s in chunk) / len(chunk)) if chunk else 0.0
+        energy.append(rms)
 
-    # Onset strength = positive first-order difference of energy
-    onset_strength = np.maximum(0, np.diff(energy, prepend=energy[0]))
+    # Onset strength = positive first-order difference
+    onset = [max(0.0, energy[i] - energy[i-1]) for i in range(1, len(energy))]
+    onset.insert(0, 0.0)
 
-    # Find onset peaks: local maxima above mean + 1 std
-    threshold = onset_strength.mean() + onset_strength.std() * 0.8
+    if not onset:
+        return total_secs / 2
+
+    mean_o  = sum(onset) / len(onset)
+    var_o   = sum((x - mean_o)**2 for x in onset) / len(onset)
+    std_o   = math.sqrt(var_o)
+    thresh  = mean_o + std_o * 0.8
+
+    # Detect peaks above threshold
     peaks = []
-    for i in range(1, len(onset_strength) - 1):
-        if (onset_strength[i] > threshold and
-                onset_strength[i] >= onset_strength[i-1] and
-                onset_strength[i] >= onset_strength[i+1]):
-            peaks.append(i * hop_secs)  # seconds
+    for i in range(1, len(onset) - 1):
+        if onset[i] > thresh and onset[i] >= onset[i-1] and onset[i] >= onset[i+1]:
+            peaks.append(i * hop_secs)
 
-    # Search bar boundaries in the middle third
-    lo_secs  = total_secs / 3
-    hi_secs  = total_secs * 2 / 3
-    midpoint = total_secs / 2
-
-    # For each bar boundary in the middle third, find the closest onset peak
-    bar = 1
+    # Find bar boundary in middle third closest to midpoint
+    lo_secs   = total_secs / 3
+    hi_secs   = total_secs * 2 / 3
+    midpoint  = total_secs / 2
     best_pos  = midpoint
     best_dist = float('inf')
 
+    bar = 1
     while True:
         bar_pos = bar * bar_secs
         if bar_pos > hi_secs:
             break
         if bar_pos >= lo_secs:
-            # Find nearest onset peak to this bar boundary
             for peak in peaks:
-                dist = abs(peak - bar_pos)
-                # Only consider peaks within half a bar of the boundary
-                if dist < bar_secs * 0.5:
-                    # Prefer the bar boundary closest to the midpoint
+                if abs(peak - bar_pos) < bar_secs * 0.5:
                     mid_dist = abs(bar_pos - midpoint)
                     if mid_dist < best_dist:
                         best_dist = mid_dist
-                        # Step back slightly before the onset for a clean splice
-                        best_pos  = max(0, peak - pre_roll)
+                        best_pos  = max(0.0, peak - pre_roll)
         bar += 1
 
     return best_pos
-
-
 def wav_to_ternary_mp3(wav_bytes: bytes, tempo: int = 120, cf_secs: float = 0.3) -> bytes:
     """
     Split one Lyria WAV at its natural midpoint into A and B sections,
