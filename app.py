@@ -163,6 +163,30 @@ MOOD_MAP = {
 }
 
 
+# ──────────────────────────────────────────────────────────
+# TOMITA PROMPT BUILDER
+# ──────────────────────────────────────────────────────────
+
+TOMITA_MOODS = {
+    "vast":          "immense, cosmic, boundless, like floating in deep space",
+    "delicate":      "fragile, tender, like frost on glass, barely there",
+    "mysterious":    "shadowy, unknowable, drifting between worlds",
+    "joyful":        "bright, shimmering, dancing particles of light",
+    "melancholic":   "wistful, longing, a distant memory slowly dissolving",
+    "peaceful":      "serene, suspended, time standing still",
+    "dramatic":      "surging, powerful, vast forces in slow motion",
+    "contemplative": "introspective, patient, deep listening",
+}
+
+TOMITA_SOURCES = {
+    "debussy":      "impressionist tone poem translated into analogue electronics, liquid harmonies, blurred edges",
+    "holst":        "cosmic orchestral sweep translated into vast synthesizer layers, planetary scale",
+    "mussorgsky":   "bold architectural themes translated into rich synthesizer colours, heavy and vivid",
+    "ravel":        "glittering orchestral textures translated into shimmering filter sweeps and bell tones",
+    "stravinsky":   "rhythmic angular phrases translated into sequencer patterns and oscillator stabs",
+    "original":     "original cosmic soundscape, no classical source, pure synthesis",
+}
+
 def build_lyria_prompt(c: dict) -> tuple:
     composer = c.get("composer", "Mozart")
     key      = c.get("key", "C major")
@@ -180,8 +204,112 @@ def build_lyria_prompt(c: dict) -> tuple:
 
 
 # ──────────────────────────────────────────────────────────
-# LYRIA API
+# TOMITA PROMPT BUILDER
 # ──────────────────────────────────────────────────────────
+
+TOMITA_CONFUCIUS_SYSTEM = """You are Isao Tomita's inner voice — the quiet interpreter who listens to a feeling and translates it into a sonic world.
+
+Someone brings you a prompt. You must return a JSON object describing how Tomita would realise it — not as abstract theory, but as a specific sonic vision using his actual techniques and palette.
+
+Respond ONLY with valid JSON (no markdown, no explanation):
+{
+  "title":          "A poetic title for the piece",
+  "tempo":          72 (integer BPM — the felt beat, slow to moderate, Tomita rarely rushed),
+  "mood":           "one word: contemplative|mysterious|vast|tender|cosmic|melancholic|ethereal|serene|luminous|dreamlike",
+  "primary_motion": "describe the main melodic idea — what moves, how it moves, what it feels like",
+  "programme_note": "Two sentences in Tomita's voice — what world this piece inhabits and what the listener will feel."
+}
+
+Tempo guidance: Tomita's music is patient. 50-90 BPM is typical. Never exceed 100."""
+
+
+def call_tomita_confucius(user_prompt: str) -> dict:
+    payload = {
+        "model": "deepseek-chat",
+        "temperature": 0.7,
+        "max_tokens": 400,
+        "messages": [
+            {"role": "system", "content": TOMITA_CONFUCIUS_SYSTEM},
+            {"role": "user",   "content": user_prompt}
+        ]
+    }
+    headers = {
+        "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+        "Content-Type":  "application/json"
+    }
+    r = req.post(DEEPSEEK_URL, headers=headers, json=payload, timeout=30)
+    r.raise_for_status()
+    raw = r.json()["choices"][0]["message"]["content"].strip()
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+    return json.loads(raw.strip())
+
+
+def build_tomita_prompt(user_prompt: str) -> tuple:
+    """
+    Build a Lyria prompt in the specific sonic language of Isao Tomita.
+    Detects mood and source material from the user prompt, then constructs
+    a prompt around Tomita's signature techniques — Moog III, portamento,
+    filter sweeps, ring modulation, vast reverb, Mellotron choir.
+    References: Snowflakes Are Dancing (1974), The Planets (1976),
+    Pictures at an Exhibition (1975).
+    """
+    prompt_lower = user_prompt.lower()
+
+    # Detect mood
+    mood = "contemplative, patient, deeply listening"
+    if any(w in prompt_lower for w in ["space", "cosmos", "star", "planet", "universe", "nebula", "cosmic"]):
+        mood = "immense, cosmic, boundless, like floating in deep space"
+    elif any(w in prompt_lower for w in ["sad", "loss", "grief", "lonely", "memory", "melanchol"]):
+        mood = "wistful, longing, a distant memory slowly dissolving"
+    elif any(w in prompt_lower for w in ["dream", "float", "mist", "fog", "water", "rain", "snow"]):
+        mood = "hazy, dreamlike, suspended between waking and sleep"
+    elif any(w in prompt_lower for w in ["storm", "power", "surge", "swell", "dramatic"]):
+        mood = "surging, powerful, vast forces in slow motion"
+    elif any(w in prompt_lower for w in ["joy", "bright", "light", "dance", "shim"]):
+        mood = "bright, shimmering, dancing particles of light"
+    elif any(w in prompt_lower for w in ["peaceful", "calm", "still", "quiet", "serene"]):
+        mood = "serene, suspended, time standing still"
+
+    # Detect classical source
+    source = ""
+    if "debussy" in prompt_lower:
+        source = "impressionist tone poem translated into analogue electronics, liquid blurred harmonies, "
+    elif "holst" in prompt_lower or "planet" in prompt_lower:
+        source = "cosmic orchestral sweep translated into vast synthesizer layers, planetary scale, "
+    elif "mussorgsky" in prompt_lower or "picture" in prompt_lower:
+        source = "bold vivid themes translated into rich synthesizer colours, heavy and architectural, "
+    elif "ravel" in prompt_lower:
+        source = "glittering orchestral textures translated into shimmering filter sweeps and bell tones, "
+
+    prompt = (
+        f"{source}"
+        f"Analog Moog III modular synthesizer as primary voice, "
+        f"slow portamento glide between notes melting together seamlessly, "
+        f"voltage-controlled low-pass filter sweep breathing open and closed, "
+        f"multiple slightly detuned oscillators layered for warm thick texture, "
+        f"ring modulation on sustained notes creating bell-like metallic shimmer, "
+        f"step sequencer arpeggio pattern underneath providing gentle hypnotic movement, "
+        f"Mellotron choir pad soft and slightly blurred in the background, "
+        f"vast AKG spring reverb and Binson Echorec tape echo — every sound suspended in enormous shimmering space, "
+        f"synthesized birdsong and wind textures woven lightly into the background, "
+        f"wide slowly drifting stereo field with sounds orbiting gently, "
+        f"{mood}, "
+        f"slow patient tempo around 70 BPM, instrumental electronic space music, "
+        f"in the style of Isao Tomita Snowflakes Are Dancing and The Planets"
+    )
+
+    negative = (
+        "vocals, singing, drums, drum kit, kick drum, acoustic piano, acoustic guitar, "
+        "electric guitar, bass guitar, brass, trumpet, trombone, pop, rock, jazz, "
+        "digital synthesizer, harsh sounds, distortion, fast tempo, rhythmic dance music"
+    )
+
+    return prompt, negative
+
+
 
 def _get_access_token() -> str:
     sa_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
@@ -532,6 +660,38 @@ def compose():
             "mood":           confucius.get("mood"),
             "programme_note": confucius.get("programme_note", ""),
             "lyria_prompt":   lyria_prompt,   # shown in UI for transparency
+        })
+
+    except Exception as e:
+        import traceback
+        return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
+
+
+@app.route("/compose_tomita", methods=["POST"])
+def compose_tomita():
+    data = request.get_json(force=True)
+    user_prompt = data.get("prompt", "").strip()
+    if not user_prompt:
+        return jsonify({"error": "No prompt provided"}), 400
+
+    try:
+        # Step 1: Build Tomita-specific Lyria prompt directly — no Confucius
+        lyria_prompt, lyria_negative = build_tomita_prompt(user_prompt)
+
+        # Step 2: Generate one clip from Lyria
+        wav_bytes = lyria_generate(lyria_prompt, lyria_negative)
+
+        # Step 3: Assemble into ABA ternary form
+        # Use a gentle tempo for split-point calculation — Tomita is always slow
+        mp3_bytes = wav_to_ternary_mp3(wav_bytes, tempo=72)
+        mp3_b64   = base64.b64encode(mp3_bytes).decode()
+
+        return jsonify({
+            "success":      True,
+            "mp3":          mp3_b64,
+            "form":         "ABA",
+            "style":        "Isao Tomita",
+            "lyria_prompt": lyria_prompt,   # for transparency/debugging
         })
 
     except Exception as e:
