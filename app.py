@@ -289,7 +289,7 @@ def build_tomita_prompt(user_prompt: str) -> tuple:
         f"{source}"
         f"Moog synthesizer, slow filter sweeps, detuned oscillators, "
         f"Mellotron choir, vast reverb, synthesized birdsong, "
-        f"{mood}, 70 BPM, ambient electronic, Isao Tomita style"
+        f"{mood}, 70 BPM, ambient electronic space music"
     )
 
     negative = (
