@@ -612,7 +612,7 @@ def wav_to_mp3(wav_bytes: bytes, tempo: int = 120, loops: int = 2) -> bytes:
 
 @app.route("/")
 def index():
-    return app.send_static_file("index.html")
+    return "Claude Composer is running."
 
 
 @app.route("/health")
