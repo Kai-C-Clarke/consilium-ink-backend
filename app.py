@@ -284,27 +284,17 @@ def build_tomita_prompt(user_prompt: str) -> tuple:
     elif "ravel" in prompt_lower:
         source = "glittering orchestral textures translated into shimmering filter sweeps and bell tones, "
 
+    # Keep prompt concise — Lyria rejects over-specified prompts
     prompt = (
         f"{source}"
-        f"Analog Moog III modular synthesizer as primary voice, "
-        f"slow portamento glide between notes melting together seamlessly, "
-        f"voltage-controlled low-pass filter sweep breathing open and closed, "
-        f"multiple slightly detuned oscillators layered for warm thick texture, "
-        f"ring modulation on sustained notes creating bell-like metallic shimmer, "
-        f"step sequencer arpeggio pattern underneath providing gentle hypnotic movement, "
-        f"Mellotron choir pad soft and slightly blurred in the background, "
-        f"vast AKG spring reverb and Binson Echorec tape echo — every sound suspended in enormous shimmering space, "
-        f"synthesized birdsong and wind textures woven lightly into the background, "
-        f"wide slowly drifting stereo field with sounds orbiting gently, "
-        f"{mood}, "
-        f"slow patient tempo around 70 BPM, instrumental electronic space music, "
-        f"in the style of Isao Tomita Snowflakes Are Dancing and The Planets"
+        f"Moog synthesizer, slow filter sweeps, detuned oscillators, "
+        f"Mellotron choir, vast reverb, synthesized birdsong, "
+        f"{mood}, 70 BPM, ambient electronic, Isao Tomita style"
     )
 
     negative = (
-        "vocals, singing, drums, drum kit, kick drum, acoustic piano, acoustic guitar, "
-        "electric guitar, bass guitar, brass, trumpet, trombone, pop, rock, jazz, "
-        "digital synthesizer, harsh sounds, distortion, fast tempo, rhythmic dance music"
+        "vocals, drums, acoustic piano, electric guitar, brass, "
+        "pop, rock, jazz, fast tempo, harsh, digital"
     )
 
     return prompt, negative
