@@ -528,18 +528,21 @@ def wav_to_ternary_mp3(wav_bytes: bytes, tempo: int = 120, cf_secs: float = 0.3)
         a = wav_a if os.path.exists(wav_a) else wav_in
         b = wav_b if os.path.exists(wav_b) else wav_in
 
-        # 4. Assemble A + B + A with crossfades at the two joins
-        #    Join point 1: at split seconds (end of A / start of B)
-        #    Join point 2: at split + b_duration seconds (end of B / start of A)
+        # 4. Assemble A + B + B + A with crossfades — extended ternary form
+        #    A (intro) → B (development) → B (development repeat) → A (return)
+        #    Gives roughly 80s from a 32s Lyria clip
         import wave as wm
+        with wm.open(a, 'rb') as wf:
+            a_dur = wf.getnframes() / wf.getframerate()
         with wm.open(b, 'rb') as wf:
             b_dur = wf.getnframes() / wf.getframerate()
 
-        j1 = f"{split},{cf_secs}"
-        j2 = f"{split + b_dur},{cf_secs}"
+        j1 = f"{a_dur},{cf_secs}"
+        j2 = f"{a_dur + b_dur},{cf_secs}"
+        j3 = f"{a_dur + b_dur + b_dur},{cf_secs}"
 
         sox_aba = subprocess.run(
-            ["sox", a, b, a, wav_aba, "splice", "-q", j1, j2],
+            ["sox", a, b, b, a, wav_aba, "splice", "-q", j1, j2, j3],
             capture_output=True, timeout=90
         )
         aba = wav_aba if sox_aba.returncode == 0 else a
