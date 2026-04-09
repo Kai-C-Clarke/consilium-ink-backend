@@ -59,7 +59,9 @@ GROK_CHAT_MODEL   = "grok-4-1-fast-reasoning"
 GROK_IMAGE_MODEL  = "grok-imagine-image"
 CONSILIUM_API_URL = os.environ.get("CONSILIUM_API_URL", "https://consilium-d1fw.onrender.com")
 
-NEWS_STATE_PATH   = "/tmp/consilium_news.json"
+GITHUB_TOKEN      = os.environ.get("GITHUB_TOKEN", "")
+GITHUB_REPO       = "Kai-C-Clarke/consilium-ink-backend"
+GITHUB_STATE_FILE = "news_state.json"
 
 MODELS = {
     "grok":     {"url": "https://api.x.ai/v1/chat/completions",      "model": "grok-3",                    "key": os.environ.get("GROK_API_KEY", "")},
@@ -112,21 +114,57 @@ DELIBERATION_PERSONAS = {
 
 # ── Storage ───────────────────────────────────────────────────
 
+
+# Storage via GitHub repo (persistent, free)
+
 def news_load():
-    if not os.path.exists(NEWS_STATE_PATH):
-        return {"generated": None, "stories": [], "edition": 0}
     try:
-        with open(NEWS_STATE_PATH) as f:
-            return json.load(f)
-    except Exception:
-        return {"generated": None, "stories": [], "edition": 0}
+        import base64 as b64
+        r = req.get(
+            f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_STATE_FILE}",
+            headers={"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"},
+            timeout=10
+        )
+        if r.status_code == 200:
+            content = b64.b64decode(r.json()["content"]).decode("utf-8")
+            return json.loads(content)
+    except Exception as e:
+        logging.warning(f"[NEWS] GitHub load failed: {e}")
+    return {"generated": None, "stories": [], "edition": 0}
 
 
 def news_save(data):
-    with open(NEWS_STATE_PATH, "w") as f:
-        json.dump(data, f, indent=2)
-
-
+    import base64 as b64
+    if not GITHUB_TOKEN:
+        logging.error("[NEWS] No GITHUB_TOKEN")
+        return False
+    try:
+        sha = None
+        r = req.get(
+            f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_STATE_FILE}",
+            headers={"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"},
+            timeout=10
+        )
+        if r.status_code == 200:
+            sha = r.json()["sha"]
+        content = b64.b64encode(json.dumps(data, indent=2).encode()).decode()
+        payload = {"message": f"News state: Edition {data.get('edition', '?')}", "content": content}
+        if sha:
+            payload["sha"] = sha
+        r = req.put(
+            f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_STATE_FILE}",
+            headers={"Authorization": f"token {GITHUB_TOKEN}", "Content-Type": "application/json"},
+            json=payload,
+            timeout=30
+        )
+        if r.status_code in (200, 201):
+            logging.info(f"[NEWS] State saved to GitHub Edition {data.get('edition')}")
+            return True
+        logging.error(f"[NEWS] GitHub save failed: {r.status_code}")
+        return False
+    except Exception as e:
+        logging.error(f"[NEWS] GitHub save exception: {e}")
+        return False
 # ── Source Fetching ───────────────────────────────────────────
 
 def fetch_rss(name, url, max_items=5):
