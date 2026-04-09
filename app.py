@@ -59,7 +59,7 @@ GROK_CHAT_MODEL   = "grok-3"
 GROK_IMAGE_MODEL  = "grok-2-image"
 CONSILIUM_API_URL = os.environ.get("CONSILIUM_API_URL", "https://consilium-d1fw.onrender.com")
 
-NEWS_STATE_PATH   = "/mnt/data/consilium_news.json"
+NEWS_STATE_PATH   = "/tmp/consilium_news.json"
 
 MODELS = {
     "grok":     {"url": "https://api.x.ai/v1/chat/completions",      "model": "grok-3",                    "key": os.environ.get("GROK_API_KEY", "")},
@@ -124,7 +124,6 @@ def news_load():
 
 
 def news_save(data):
-    os.makedirs("/mnt/data", exist_ok=True)
     with open(NEWS_STATE_PATH, "w") as f:
         json.dump(data, f, indent=2)
 
