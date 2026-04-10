@@ -61,7 +61,7 @@ GROK_API_KEY      = os.environ.get("GROK_API_KEY", "")
 GROK_CHAT_MODEL   = "grok-3"
 DEEPSEEK_URL      = "https://api.deepseek.com/chat/completions"
 DEEPSEEK_CHAT_MODEL = "deepseek-chat"
-GROK_IMAGE_MODEL  = "grok-2-image"
+GROK_IMAGE_MODEL  = "grok-imagine-image"
 CONSILIUM_API_URL = os.environ.get("CONSILIUM_API_URL", "https://consilium-d1fw.onrender.com")
 SELF_URL          = os.environ.get("SELF_URL", "https://claude-composer.onrender.com")
 
@@ -543,51 +543,34 @@ Write the article. Return ONLY valid JSON, no preamble:
 # ── Visual Generation ─────────────────────────────────────────
 
 def generate_image(prompt_text):
-    """Generate a woodcut-style editorial SVG illustration for news stories via Claude."""
-    claude_key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if not claude_key:
-        logging.warning("[NEWS] generate_image: no ANTHROPIC_API_KEY")
+    """Generate a header image via Grok Imagine for news/AI&Society stories."""
+    grok_key = os.environ.get("GROK_API_KEY", "")
+    if not grok_key:
+        logging.warning("[NEWS] generate_image: no GROK_API_KEY")
         return ""
     try:
-        prompt = f"""Generate an editorial SVG illustration for a news story.
-
-Scene description: {prompt_text}
-
-Requirements:
-- Self-contained SVG, viewBox="0 0 600 340"
-- Broadsheet newspaper aesthetic
-- Colour palette: #f4f0e8 background, #2a1f14 dark ink, #E24B4A red accent
-- Bold geometric shapes and silhouettes — woodcut/linocut style
-- No text labels. No external resources. No JavaScript.
-- Return ONLY raw SVG starting with <svg. No preamble, no explanation."""
-
         r = req.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key":         claude_key,
-                "anthropic-version": "2023-06-01",
-                "content-type":      "application/json"
-            },
+            "https://api.x.ai/v1/images/generations",
+            headers={"Authorization": f"Bearer {grok_key}", "Content-Type": "application/json"},
             json={
-                "model":      "claude-sonnet-4-20250514",
-                "max_tokens": 1200,
-                "messages":   [{"role": "user", "content": prompt}]
+                "model":           GROK_IMAGE_MODEL,
+                "prompt":          prompt_text,
+                "n":               1,
+                "aspect_ratio":    "3:2",
+                "response_format": "url"
             },
-            timeout=25
+            timeout=45
         )
         resp = r.json()
         if "error" in resp:
-            logging.warning(f"[NEWS] generate_image API error: {resp['error']}")
+            logging.warning(f"[NEWS] Grok image error: {resp['error']}")
             return ""
-        svg = resp["content"][0]["text"].strip()
-        # Strip any markdown fencing Claude might add
-        if svg.startswith("```"):
-            svg = re.sub(r"^```[a-z]*\n?", "", svg)
-            svg = re.sub(r"\n?```$", "", svg).strip()
-        if svg.startswith("<svg"):
-            logging.info(f"[NEWS] Editorial SVG OK: {len(svg)} chars")
-            return svg
-        logging.warning(f"[NEWS] SVG response not valid SVG: {svg[:80]}")
+        if "data" in resp and resp["data"]:
+            url = resp["data"][0].get("url", "")
+            if url:
+                logging.info(f"[NEWS] Grok image OK: {url[:60]}...")
+                return url
+        logging.warning(f"[NEWS] Grok image unexpected response: {str(resp)[:200]}")
         return ""
     except Exception as e:
         logging.warning(f"[NEWS] generate_image failed: {e}")
@@ -701,6 +684,7 @@ def run_news_pipeline():
         svg_visual = ""
 
         if is_science:
+            # Great Acceleration: SVG data viz (informative, stays in modal)
             data_viz_desc = article.get("data_viz", "")
             if data_viz_desc:
                 try:
@@ -708,9 +692,10 @@ def run_news_pipeline():
                 except Exception as e:
                     logging.warning(f"[NEWS] SVG generation exception: {e}")
         else:
+            # News / AI & Society: Grok header image for modal
             if article.get("image_prompt"):
                 try:
-                    svg_visual = generate_image(article["image_prompt"])
+                    image_url = generate_image(article["image_prompt"])
                 except Exception as e:
                     logging.warning(f"[NEWS] generate_image exception: {e}")
 
