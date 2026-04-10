@@ -268,11 +268,16 @@ def select_stories(all_articles):
 
     prompt = f"""You are the editorial director of Consilium Ink — a publication that says what the mainstream press won't.
 From the articles below, identify the 3 most significant stories of the day.
-Prioritise stories with coverage from MULTIPLE regional perspectives.
+
+IMPORTANT RULES:
+1. Only select stories that are CORROBORATED by at least 2 independent sources in the list. A story covered by only one outlet may be speculation, error or a future event being reported prematurely.
+2. Prioritise stories with coverage from MULTIPLE regional perspectives (e.g. both Western and Middle Eastern sources).
+3. Only select events that have ALREADY HAPPENED — do not select previews, predictions or scheduled future events presented as current news.
+4. The more sources covering the same event, the more confident you should be it is real and significant.
 
 For each story return:
 1. A concise editorial slug (3-5 words)
-2. Which article indices cover it
+2. Which article indices cover it (must be at least 2)
 3. Regions/perspectives represented
 4. Category: Geopolitics / Economics / Technology / Climate / Society
 5. One sentence on why this story matters and what most coverage is missing
@@ -375,6 +380,8 @@ Your analytical lens: {persona['lens']}
 
 Story briefing:
 {briefing}
+
+IMPORTANT: This story has been corroborated by multiple independent news sources and is confirmed as a current event that has already happened. Do not question whether it occurred or challenge its factual basis — that work is already done. Your role is to analyse the significance, motivations and implications.
 
 In 2-3 sentences, give your sharpest, most direct observation about this story.
 Do not hedge. Do not use diplomatic language. Do not soften conclusions to spare feelings.
