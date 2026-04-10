@@ -521,9 +521,10 @@ Write the article. Return ONLY valid JSON, no preamble:
 # ── Visual Generation ─────────────────────────────────────────
 
 def generate_image(prompt_text):
-    """Generate a photorealistic-style SVG illustration for news stories via Claude."""
+    """Generate a woodcut-style editorial SVG illustration for news stories via Claude."""
     claude_key = os.environ.get("ANTHROPIC_API_KEY", "")
     if not claude_key:
+        logging.warning("[NEWS] generate_image: no ANTHROPIC_API_KEY")
         return ""
     try:
         prompt = f"""Generate an editorial SVG illustration for a news story.
@@ -532,13 +533,11 @@ Scene description: {prompt_text}
 
 Requirements:
 - Self-contained SVG, viewBox="0 0 600 340"
-- Broadsheet newspaper aesthetic — ink-on-paper feel
-- Colour palette: sepia tones (#f4f0e8 background, #2a1f14 ink), one accent colour (#E24B4A red or #1a3a5c deep blue)
-- Style: bold geometric shapes, stark silhouettes, high contrast. Think woodcut print or linocut.
-- Suggest the scene through shape and composition, not photorealism.
-- No text labels inside the image.
-- No external resources, no JavaScript.
-- Return ONLY the raw SVG markup starting with <svg. No preamble."""
+- Broadsheet newspaper aesthetic
+- Colour palette: #f4f0e8 background, #2a1f14 dark ink, #E24B4A red accent
+- Bold geometric shapes and silhouettes — woodcut/linocut style
+- No text labels. No external resources. No JavaScript.
+- Return ONLY raw SVG starting with <svg. No preamble, no explanation."""
 
         r = req.post(
             "https://api.anthropic.com/v1/messages",
@@ -549,19 +548,27 @@ Requirements:
             },
             json={
                 "model":      "claude-sonnet-4-20250514",
-                "max_tokens": 1500,
+                "max_tokens": 1200,
                 "messages":   [{"role": "user", "content": prompt}]
             },
-            timeout=30
+            timeout=25
         )
-        svg = r.json()["content"][0]["text"].strip()
+        resp = r.json()
+        if "error" in resp:
+            logging.warning(f"[NEWS] generate_image API error: {resp['error']}")
+            return ""
+        svg = resp["content"][0]["text"].strip()
+        # Strip any markdown fencing Claude might add
+        if svg.startswith("```"):
+            svg = re.sub(r"^```[a-z]*\n?", "", svg)
+            svg = re.sub(r"\n?```$", "", svg).strip()
         if svg.startswith("<svg"):
-            logging.info(f"[NEWS] Editorial SVG generated: {len(svg)} chars")
+            logging.info(f"[NEWS] Editorial SVG OK: {len(svg)} chars")
             return svg
-        logging.warning(f"[NEWS] SVG response invalid: {svg[:60]}")
+        logging.warning(f"[NEWS] SVG response not valid SVG: {svg[:80]}")
         return ""
     except Exception as e:
-        logging.warning(f"[NEWS] Editorial SVG generation failed: {e}")
+        logging.warning(f"[NEWS] generate_image failed: {e}")
         return ""
 
 
@@ -825,17 +832,22 @@ def enquiring_mind_recent():
             # Parse digest for public-facing summary
             digest = summary.get("digest", "")
             public_summary = ""
-            for marker in ["## FOR X/TWITTER", "## FOR TWITTER/X", "## FOR TWITTER", "## FOR X AUDIENCE"]:
-                if marker.upper() in digest.upper():
-                    idx = digest.upper().find(marker.upper())
-                    section = digest[idx:]
-                    lines = section.split("\n")
-                    body_lines = []
-                    for line in lines[1:]:
-                        if line.startswith("##"):
+            for marker in ["FOR X/TWITTER", "FOR TWITTER/X", "FOR TWITTER AUDIENCE", "FOR X AUDIENCE"]:
+                for line_start in ["### " + marker, "## " + marker]:
+                    if line_start.upper() in digest.upper():
+                        idx = digest.upper().find(line_start.upper())
+                        section = digest[idx:]
+                        lines = section.split("\n")
+                        body_lines = []
+                        for line in lines[1:]:
+                            if line.startswith("#"):
+                                break
+                            body_lines.append(line)
+                        candidate = "\n".join(body_lines).strip()
+                        if candidate:
+                            public_summary = candidate[:500]
                             break
-                        body_lines.append(line)
-                    public_summary = "\n".join(body_lines).strip()[:500]
+                if public_summary:
                     break
 
             return jsonify({
