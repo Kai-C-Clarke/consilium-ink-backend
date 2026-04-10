@@ -807,62 +807,51 @@ def enquiring_mind():
 @app.route("/enquiring-mind/recent")
 def enquiring_mind_recent():
     """
-    Return the last Enquiring Mind question and summary for display on the site.
-    Pulls summary from /consilium/summary and question from /consilium/mind.
+    Return the latest Enquiring Mind question and cycle stats.
+    Question text from /consilium/mind (reliable, always cached on disk).
+    Summary dropped — was unreliable due to variable digest header format.
     """
     for attempt in range(2):
         try:
-            summary_r = req.get(f"{CONSILIUM_API_URL}/consilium/summary", timeout=25)
             mind_r    = req.get(f"{CONSILIUM_API_URL}/consilium/mind",    timeout=25)
+            summary_r = req.get(f"{CONSILIUM_API_URL}/consilium/summary", timeout=25)
 
-            if summary_r.status_code != 200:
-                if attempt == 0:
-                    time.sleep(3)
-                    continue
-                return jsonify({"status": "unavailable", "items": []})
+            last_q   = ""
+            cycles   = 0
+            last_run = ""
 
-            summary  = summary_r.json()
-            cycles   = summary.get("mind_cycles", 0)
-            last_run = summary.get("last_run", "")
-
-            last_q = ""
             if mind_r.status_code == 200:
-                last_q = mind_r.json().get("last_question", "")
+                mind_data = mind_r.json()
+                last_q    = mind_data.get("last_question", "")
+                cycles    = mind_data.get("run_count", 0)
+                last_run  = mind_data.get("last_run", "")
 
-            # Parse digest for public-facing summary
-            digest = summary.get("digest", "")
-            public_summary = ""
-            for marker in ["FOR X/TWITTER", "FOR TWITTER/X", "FOR TWITTER AUDIENCE", "FOR X AUDIENCE"]:
-                for line_start in ["### " + marker, "## " + marker]:
-                    if line_start.upper() in digest.upper():
-                        idx = digest.upper().find(line_start.upper())
-                        section = digest[idx:]
-                        lines = section.split("\n")
-                        body_lines = []
-                        for line in lines[1:]:
-                            if line.startswith("#"):
-                                break
-                            body_lines.append(line)
-                        candidate = "\n".join(body_lines).strip()
-                        if candidate:
-                            public_summary = candidate[:500]
-                            break
-                if public_summary:
-                    break
+            # Fill cycles/last_run from summary if mind didn't have them
+            if summary_r.status_code == 200:
+                s = summary_r.json()
+                if not cycles:
+                    cycles   = s.get("mind_cycles", 0)
+                if not last_run:
+                    last_run = s.get("last_run", "")
 
-            return jsonify({
-                "status":         "ok",
-                "mind_cycles":    cycles,
-                "last_run":       last_run,
-                "last_question":  last_q,
-                "public_summary": public_summary,
-            })
+            if last_q or cycles:
+                return jsonify({
+                    "status":        "ok",
+                    "mind_cycles":   cycles,
+                    "last_run":      last_run,
+                    "last_question": last_q,
+                })
+
+            if attempt == 0:
+                time.sleep(5)
+                continue
+
         except Exception as e:
             logging.warning(f"[MIND] Recent fetch attempt {attempt+1} failed: {e}")
             if attempt == 0:
                 time.sleep(5)
 
-    return jsonify({"status": "unavailable", "items": []})
+    return jsonify({"status": "unavailable"})
 
 
 # ── Startup ───────────────────────────────────────────────────
