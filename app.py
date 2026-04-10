@@ -56,6 +56,8 @@ CONSILIUM_KEY     = os.environ.get("CONSILIUM_KEY", "3a51b60e9b78720f8528412db52
 NEWSAPI_KEY       = os.environ.get("NEWSAPI_KEY", "")
 GROK_API_KEY      = os.environ.get("GROK_API_KEY", "")
 GROK_CHAT_MODEL   = "grok-4-1-fast-reasoning"
+DEEPSEEK_URL      = "https://api.deepseek.com/chat/completions"
+DEEPSEEK_CHAT_MODEL = "deepseek-chat"
 GROK_IMAGE_MODEL  = "grok-imagine-image"
 CONSILIUM_API_URL = os.environ.get("CONSILIUM_API_URL", "https://consilium-d1fw.onrender.com")
 
@@ -294,10 +296,10 @@ Articles:
 
     try:
         r = req.post(
-            "https://api.x.ai/v1/chat/completions",
-            headers={"Authorization": f"Bearer {GROK_API_KEY}", "Content-Type": "application/json"},
+            DEEPSEEK_URL,
+            headers={"Authorization": f"Bearer {os.environ.get('DEEPSEEK_API_KEY', '')}", "Content-Type": "application/json"},
             json={
-                "model":       GROK_CHAT_MODEL,
+                "model":       DEEPSEEK_CHAT_MODEL,
                 "messages":    [{"role": "user", "content": prompt}],
                 "max_tokens":  1000,
                 "temperature": 0.3
@@ -431,15 +433,15 @@ Write the article. Return ONLY valid JSON, no preamble:
 
     try:
         r = req.post(
-            "https://api.x.ai/v1/chat/completions",
-            headers={"Authorization": f"Bearer {GROK_API_KEY}", "Content-Type": "application/json"},
+            DEEPSEEK_URL,
+            headers={"Authorization": f"Bearer {os.environ.get('DEEPSEEK_API_KEY', '')}", "Content-Type": "application/json"},
             json={
-                "model":       GROK_CHAT_MODEL,
+                "model":       DEEPSEEK_CHAT_MODEL,
                 "messages":    [{"role": "user", "content": prompt}],
                 "max_tokens":  800,
                 "temperature": 0.4
             },
-            timeout=30
+            timeout=60
         )
         raw = r.json()["choices"][0]["message"]["content"].strip()
         raw = re.sub(r"^```json\s*", "", raw)
