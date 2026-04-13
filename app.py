@@ -53,6 +53,47 @@ logging.basicConfig(
 app = Flask(__name__)
 CORS(app)
 
+# ── Usage Analytics ───────────────────────────────────────────
+ANALYTICS_FILE = "/mnt/data/analytics.json"
+
+def _load_analytics():
+    try:
+        with open(ANALYTICS_FILE) as f:
+            return json.load(f)
+    except Exception:
+        return {"total": 0, "endpoints": {}, "daily": {}, "api_hits": 0}
+
+def _save_analytics(data):
+    try:
+        with open(ANALYTICS_FILE, "w") as f:
+            json.dump(data, f)
+    except Exception:
+        pass
+
+@app.before_request
+def track_request():
+    path = request.path
+    # Only track meaningful endpoints, skip health spam
+    if path in ("/health",):
+        return
+    try:
+        data = _load_analytics()
+        data["total"] = data.get("total", 0) + 1
+        eps = data.get("endpoints", {})
+        eps[path] = eps.get(path, 0) + 1
+        data["endpoints"] = eps
+        # Daily counter
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        daily = data.get("daily", {})
+        daily[today] = daily.get(today, 0) + 1
+        data["daily"] = daily
+        # API hit counter
+        if path.startswith("/api/"):
+            data["api_hits"] = data.get("api_hits", 0) + 1
+        _save_analytics(data)
+    except Exception:
+        pass
+
 # ── Config ────────────────────────────────────────────────────
 
 CONSILIUM_KEY     = os.environ.get("CONSILIUM_KEY", "3a51b60e9b78720f8528412db52e7ef3")
@@ -1090,6 +1131,23 @@ def health():
         "status":    "ok",
         "edition":   state.get("edition", 0),
         "generated": state.get("generated")
+    })
+
+
+@app.route("/analytics")
+def analytics():
+    """Usage statistics — total hits, per endpoint, daily, API hits."""
+    data = _load_analytics()
+    # Sort endpoints by hits
+    eps = sorted(data.get("endpoints", {}).items(), key=lambda x: -x[1])
+    daily = data.get("daily", {})
+    # Last 7 days
+    recent_days = sorted(daily.items())[-7:]
+    return jsonify({
+        "total_requests": data.get("total", 0),
+        "api_hits":       data.get("api_hits", 0),
+        "top_endpoints":  eps[:20],
+        "daily_last_7":   recent_days,
     })
 
 
