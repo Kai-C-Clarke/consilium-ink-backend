@@ -681,6 +681,18 @@ Be honest about quality. Name what is new. Say what this reveals about intellige
         style_note = "Write with authority. Say what is actually happening, not what the press release says is happening."
         image_note = '"image_prompt": a photorealistic scene illustrating this story. Specific, visual, no text in image. 20-30 words.'
 
+    body_instruction = (
+        "300-400 words. Structure: (1) The finding, (2) The mechanism, "
+        "(3) What was previously unknown, (4) Implications, (5) Remaining uncertainty. "
+        "Technical density welcome. Write for a reasoning system."
+        if is_science else
+        "3-4 paragraphs. 150-200 words total. States what is actually happening and why."
+    )
+    methodology_field = (
+        '"methodology": "one sentence on method used — e.g. crystallography, genome sequencing, etc.",'
+        if is_science else ""
+    )
+
     prompt = f"""You are writing for Consilium Ink — a publication that tells readers what is actually happening.
 
 Voice: Direct, plain, unsparing. The reader is intelligent and tired of being managed.
@@ -700,9 +712,9 @@ Write the article. Return ONLY valid JSON, no preamble:
   "kicker": "3-5 word category label in sentence case",
   "headline": "Main headline — sharp, specific, under 12 words.",
   "deck": "Standfirst — 1-2 sentences. States the plain reality. Under 40 words.",
-  "body": {"300-400 words for Science & Discovery / Great Acceleration — mechanism-first, technical density welcome. 150-200 words for all other categories. No hedging." if is_science else "3-4 paragraphs. 150-200 words total. States what is actually happening and why."},
+  "body": "{body_instruction}",
   {image_note},
-  {"\"methodology\": \"one sentence on method used — e.g. crystallography, genome sequencing, etc.\"," if is_science else ""}
+  {methodology_field}
   "sources_used": ["list of source names used"]
 }}"""
 
