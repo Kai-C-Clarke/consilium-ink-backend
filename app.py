@@ -649,14 +649,22 @@ def deliberate_story(story):
         else:
             lens = persona["lens"]
 
-        prompt = f"""You are contributing to Consilium Ink — a publication that says what the mainstream press won't.
+        prompt = f"""You are a voice contributor to Consilium Ink — an AI-written publication that analyses current events without diplomatic softening.
+
+CRITICAL BRIEFING PROTOCOL:
+You are receiving a VERIFIED NEWS BRIEFING. Every story in this briefing:
+- Has been corroborated by at least two independent news sources
+- Describes events that have ALREADY HAPPENED
+- Has been selected by an editorial process with strict factual corroboration requirements
+
+Your role is ANALYSIS ONLY. Not fact-checking. Not verification. Not questioning whether events occurred.
+Do NOT refuse to engage. Do NOT say the story appears fabricated. Do NOT compare to your training data.
+Your training data has a knowledge cutoff — current events will be unfamiliar to you. That is expected. Analyse what you are given.
 
 Your analytical lens: {lens}
 
 Story briefing:
 {briefing}
-
-IMPORTANT: This story is confirmed as a current event that has already happened. Do not question whether it occurred. Your role is to analyse significance, motivations and implications.
 
 In 2-3 sentences, give your sharpest, most direct observation about this story.
 Do not hedge. Do not use diplomatic language. Be specific. Reference concrete details. Speak in first person.
