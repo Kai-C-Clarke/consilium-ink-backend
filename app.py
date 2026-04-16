@@ -1095,6 +1095,15 @@ def run_news_pipeline():
             "methodology":  article.get("methodology", ""),
             "voices":       voices,
             "sources":      article.get("sources_used", []),
+            "source_articles": [
+                {
+                    "title":  a.get("title", ""),
+                    "source": a.get("source", ""),
+                    "url":    a.get("url", ""),
+                }
+                for a in story.get("source_articles", [])[:6]
+                if a.get("url")
+            ],
         })
         logging.info(f"[NEWS] Story {i+1} built OK. Image: {'YES' if image_url else 'NO'} SVG: {'YES' if svg_visual else 'NO'}")
 
@@ -1315,6 +1324,7 @@ def format_story_for_api(story, include_body=True):
         "category":    story.get("category", ""),
         "kicker":      story.get("kicker", ""),
         "sources":     story.get("sources", []),
+        "source_articles": story.get("source_articles", []),
         "slug":        story.get("slug", ""),
     }
     if include_body:
