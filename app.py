@@ -138,6 +138,17 @@ NEWS_RSS_FEEDS = {
     "The Diplomat":       "https://thediplomat.com/feed/",
     # ── Latin America / Global South ─────────────────────────
     "Global Voices":      "https://globalvoices.org/feed/",
+    # ── China ─────────────────────────────────────────────────
+    "Global Times":       "https://www.globaltimes.cn/rss/outbrain.xml",
+    "SCMP World":         "https://www.scmp.com/rss/2/feed",
+    # ── Russia ────────────────────────────────────────────────
+    "Moscow Times":       "https://www.themoscowtimes.com/rss/news",
+    "Meduza":             "https://meduza.io/rss/en/all",
+    # ── Iran ──────────────────────────────────────────────────
+    "Iran International": "https://www.iranintl.com/en/rss",
+    "IranWire":           "https://iranwire.com/en/feed/",
+    # ── Middle East regional ──────────────────────────────────
+    "Al-Monitor":         "https://www.al-monitor.com/rss",
 }
 
 # ── Science / Medicine / Technology feeds ─────────────────────
