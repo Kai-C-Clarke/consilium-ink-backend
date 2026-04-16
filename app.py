@@ -337,27 +337,39 @@ def fetch_gdelt(url=GDELT_URL, max_items=8):
 
 
 def gather_all_sources():
-    """Gather all source pools: news, science, tech, arts."""
+    """Gather all source pools: news, science, tech, arts.
+    Requests are staggered with small delays to avoid DNS cache overflow
+    on Render's internal resolver when many domains are hit simultaneously.
+    """
     news_articles = []
     news_articles.extend(fetch_newsapi(max_items=10))
+    time.sleep(1)
     news_articles.extend(fetch_gdelt(GDELT_URL, max_items=8))
+    time.sleep(1)
     for name, url in NEWS_RSS_FEEDS.items():
         news_articles.extend(fetch_rss(name, url, max_items=5))
+        time.sleep(0.5)
 
     science_articles = []
+    time.sleep(1)
     science_articles.extend(fetch_gdelt(GDELT_SCIENCE_URL, max_items=6))
+    time.sleep(1)
     for name, url in SCIENCE_RSS_FEEDS.items():
         science_articles.extend(fetch_rss(name, url, max_items=4))
+        time.sleep(0.5)
 
     tech_articles = []
+    time.sleep(1)
     tech_articles.extend(fetch_gdelt(GDELT_TECH_URL, max_items=6))
     for name, url in ARTS_RSS_FEEDS.items():
         # Arts feeds also go into tech_articles pool initially; selector separates them
         pass
 
     arts_articles = []
+    time.sleep(1)
     for name, url in ARTS_RSS_FEEDS.items():
         arts_articles.extend(fetch_rss(name, url, max_items=4))
+        time.sleep(0.5)
 
     # Tag pools
     for a in news_articles:    a["pool"] = "news"
