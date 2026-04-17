@@ -147,8 +147,21 @@ NEWS_RSS_FEEDS = {
     # ── Iran ──────────────────────────────────────────────────
     "Iran International": "https://www.iranintl.com/en/rss",
     "IranWire":           "https://iranwire.com/en/feed/",
-    # ── Middle East regional ──────────────────────────────────
+    # ── Middle East / Central Asia ───────────────────────────
     "Al-Monitor":         "https://www.al-monitor.com/rss",
+    "Balkan Insight":     "https://balkaninsight.com/feed/",
+    # ── Asia / Pacific ────────────────────────────────────────
+    "Asia Times":         "https://asiatimes.com/feed/",
+    "Nikkei Asia":        "https://asia.nikkei.com/rss/feed/nar",
+    "Radio Free Asia":    "https://www.rfa.org/english/RSS",
+    # ── Latin America ─────────────────────────────────────────
+    "Latin America Reports": "https://www.latinamericareports.com/feed/",
+    # ── Africa ────────────────────────────────────────────────
+    "Premium Times Nigeria": "https://www.premiumtimesng.com/feed",
+    # ── Environment / Climate ─────────────────────────────────
+    "Mongabay":           "https://news.mongabay.com/feed/",
+    # ── Investigative ─────────────────────────────────────────
+    "The Intercept":      "https://theintercept.com/feed/?rss",
 }
 
 # ── Science / Medicine / Technology feeds ─────────────────────
@@ -553,6 +566,9 @@ Articles:
         "Iran International", "IranWire", "Al-Monitor", "Merco Press",
         "Buenos Aires Times", "Agencia Brasil", "NHK World", "Japan Times",
         "Straits Times", "Channel News Asia",
+        # New additions
+        "Asia Times", "Nikkei Asia", "Radio Free Asia", "Balkan Insight",
+        "Latin America Reports", "Premium Times Nigeria", "Mongabay",
     }
     all_articles = news_articles + science_articles + (tech_articles or []) + (arts_articles or [])
     beyond_pool = [a for a in all_articles
