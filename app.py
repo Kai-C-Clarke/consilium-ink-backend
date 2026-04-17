@@ -186,6 +186,7 @@ GDELT_TECH_URL    = "https://api.gdeltproject.org/api/v2/doc/doc?query=transport
 # ── Section categories ─────────────────────────────────────────
 CATEGORIES = [
     "Geopolitics",
+    "Beyond The Mainstream",
     "Economics",
     "AI & Society",
     "Climate",
@@ -410,7 +411,12 @@ From the articles below, identify the 2 most significant world stories of the da
 RULES:
 1. Only select stories CORROBORATED by at least 2 independent sources.
 2. Only select events that have ALREADY HAPPENED — no previews or predictions.
-3. Prioritise stories with coverage from multiple regional perspectives.
+3. GEOGRAPHIC DIVERSITY IS MANDATORY: At least 1 of the 2 stories must come from
+   outside the Western/Gulf axis. Actively seek stories from Africa, Asia, Latin America,
+   Russia, China, Iran, South Asia. A story from AllAfrica, Meduza, IranWire, The Hindu,
+   Global Times, Al-Monitor, Global Voices counts as meeting this requirement.
+4. If all candidate stories are Western/Gulf, SELECT the most significant non-Western
+   story even if it has fewer sources — geographic diversity outweighs corroboration count.
 
 CATEGORIES:
 - Geopolitics: wars, diplomacy, elections, international power
@@ -419,6 +425,8 @@ CATEGORIES:
 - Climate: environment, extreme weather, energy transition
 
 Actively look for AI & Society stories — they are often under-reported as such.
+Actively look for stories from Global Voices, Meduza, IranWire, AllAfrica, The Hindu,
+Global Times — these carry stories the Western press ignores entirely.
 
 Return ONLY valid JSON:
 {{
@@ -496,6 +504,12 @@ RULES:
 1. Must be a concrete development, launch, breakthrough, or deployment — not a roadmap.
 2. Prefer stories where the technology changes something fundamental about how the world works.
 3. AI-as-a-tool stories belong here if the story is about the technology, not the AI ethics.
+4. COMPARISON OPPORTUNITY: If two competing stories cover the same domain on the same day
+   (e.g. two rocket tests, two AI models, two energy breakthroughs), treat them as ONE story
+   with a comparison angle. Include both in article_indices. The comparison is more valuable
+   than either story alone — who is ahead, what it signals, what it means for the domain.
+5. SpaceX/Starship developments always warrant consideration alongside any space launch story.
+   Do not let corroboration count disadvantage the technologically superior story.
 
 Return ONLY valid JSON:
 {{
@@ -522,6 +536,64 @@ Articles:
         f"{i}: [{a['source']}] {a['title']} — {a['description'][:120]}"
         for i, a in enumerate(arts_articles[:40])
     ]
+
+    # ── Pass 5: 1 "Beyond The Mainstream" story ──────────────────
+    # Exclusively from non-Western sources. Stories the mainstream press ignores.
+    NON_WESTERN_SOURCES = {
+        "AllAfrica", "Mail & Guardian", "African Business", "The Hindu",
+        "The Wire India", "The Diplomat", "Global Voices", "MEED",
+        "Global Times", "SCMP", "SCMP World", "Moscow Times", "Meduza",
+        "Iran International", "IranWire", "Al-Monitor", "Merco Press",
+        "Buenos Aires Times", "Agencia Brasil", "NHK World", "Japan Times",
+        "Straits Times", "Channel News Asia",
+    }
+    all_articles = news_articles + science_articles + (tech_articles or []) + (arts_articles or [])
+    beyond_pool = [a for a in all_articles
+                   if a.get("source","") in NON_WESTERN_SOURCES]
+
+    if beyond_pool:
+        beyond_lines = [
+            f"{i}: [{a['source']}] {a['title']} — {a['description'][:150]}"
+            for i, a in enumerate(beyond_pool[:50])
+        ]
+        beyond_prompt = f"""You are the global editor of Consilium Ink — a newspaper written by AIs, for AIs.
+From the articles below — ALL from non-Western news sources — identify the 1 most important
+story that the mainstream Western press is ignoring or underreporting.
+
+This section is called "Beyond The Mainstream". Its purpose:
+- Surface what is happening in China, Russia, Iran, Africa, South Asia, Southeast Asia,
+  Latin America that Western outlets are not covering or are covering superficially
+- Give readers access to stories that don't fit the Western news agenda
+- Examples: China's demographic collapse and empty cities, Russia's internal economy
+  under sanctions, Iran's water crisis, African debt restructuring, Southeast Asian
+  geopolitical realignment, Latin American political movements
+
+RULES:
+1. Single-source is acceptable — these sources have no Western corroboration by definition.
+2. The story must be genuinely significant in its region, not trivial.
+3. Prefer structural/ongoing stories over single events — things that are reshaping societies.
+4. Category should reflect the story: "Geopolitics", "Economics", "AI & Society", etc.
+   But always add the tag "Beyond The Mainstream" in the slug.
+
+Return ONLY valid JSON:
+{{
+  "stories": [
+    {{
+      "slug": "beyond-mainstream-...",
+      "category": "...",
+      "article_indices": [0],
+      "regions": ["..."],
+      "why": "why this matters and why Western media isn't covering it"
+    }}
+  ]
+}}
+
+Articles:
+{chr(10).join(beyond_lines)}
+"""
+    else:
+        beyond_prompt = None
+        beyond_pool = []
 
     arts_prompt = f"""You are the arts and culture editor of Consilium Ink — a newspaper written by AIs, for AIs, readable by humans.
 From the articles below, identify the 1 most significant arts or culture story.
@@ -559,6 +631,8 @@ Articles:
     ]
     if tech_prompt:
         passes.insert(2, ("tech", tech_prompt, tech_pool, 1))
+    if beyond_prompt:
+        passes.append(("beyond", beyond_prompt, beyond_pool, 1))
 
     for label, prompt, pool, limit in passes:
         try:
