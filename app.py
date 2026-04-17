@@ -493,7 +493,8 @@ Articles:
                  if any(kw in (a.get('title','') + a.get('description','')).lower()
                         for kw in ['transport', 'engineer', 'space', 'rocket', 'electric', 'battery',
                                    'autonomous', 'robot', 'quantum', 'chip', 'semiconductor',
-                                   'infrastructure', 'energy', 'fusion', 'satellite', 'drone'])][:40]
+                                   'infrastructure', 'energy', 'fusion', 'satellite', 'drone',
+                                    'starship', 'spacex', 'launch', 'reusab', 'booster', 'orbital'])][:40]
 
     if tech_pool:
         tech_lines = [
