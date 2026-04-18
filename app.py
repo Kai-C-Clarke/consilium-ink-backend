@@ -162,6 +162,10 @@ NEWS_RSS_FEEDS = {
     "Mongabay":           "https://news.mongabay.com/feed/",
     # ── Investigative ─────────────────────────────────────────
     "The Intercept":      "https://theintercept.com/feed/?rss",
+    # ── Business / Finance ────────────────────────────────────
+    "Financial Times":    "https://www.ft.com/rss/home",
+    "Google News":        "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en",
+    "Forbes via Google":  "https://news.google.com/rss/search?q=site:forbes.com&hl=en-US&gl=US&ceid=US:en",
 }
 
 # ── Science / Medicine / Technology feeds ─────────────────────
