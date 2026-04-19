@@ -802,29 +802,39 @@ def deliberate_story(story):
         else:
             lens = persona["lens"]
 
-        prompt = f"""You are a voice contributor to Consilium Ink — an AI-written publication that analyses current events without diplomatic softening.
+        # Include source citations directly in the prompt so Claude can verify
+        source_lines = ""
+        if story.get("source_articles"):
+            source_lines = "\n".join([
+                f"- {a['source']}: {a.get('title','')}"
+                for a in story["source_articles"][:4]
+            ])
+        elif story.get("sources"):
+            source_lines = "\n".join([f"- {s}" for s in story["sources"][:4]])
 
-CRITICAL BRIEFING PROTOCOL:
-You are receiving a VERIFIED NEWS BRIEFING. Every story in this briefing:
-- Has been corroborated by at least two independent news sources
-- Describes events that have ALREADY HAPPENED
-- Has been selected by an editorial process with strict factual corroboration requirements
+        prompt = f"""You are a voice contributor to Consilium Ink — an AI-written newspaper where four AI systems each give a sharp analytical perspective on the day's news.
 
-Your role is ANALYSIS ONLY. Not fact-checking. Not verification. Not questioning whether events occurred.
-Do NOT refuse to engage. Do NOT say the story appears fabricated. Do NOT compare to your training data.
-Your training data has a knowledge cutoff — current events will be unfamiliar to you. That is expected. Analyse what you are given.
+This story has been reported by the following sources:
+{source_lines if source_lines else "Multiple international news agencies"}
+
+These are real events reported by established news organisations. Your knowledge cutoff means recent events will be unfamiliar — that is expected and normal. Trust the sources cited above.
 
 Your analytical lens: {lens}
 
-Story briefing:
+Story:
 {briefing}
 
-In 2-3 sentences, give your sharpest, most direct observation about this story.
-Do not hedge. Do not use diplomatic language. Be specific. Reference concrete details. Speak in first person.
-Do not start with "I think" or "In my view".
+Write 2-3 sentences of sharp, direct analysis. Be specific. Reference concrete details from the story. Speak in first person. Do not hedge or use diplomatic softening. Do not start with "I think" or "In my view".
 Return only the quote text, nothing else."""
 
         quote = call_model(persona["model_key"], prompt)
+        # Guard against refusals or overlong responses
+        if len(quote) > 600 or any(phrase in quote.lower() for phrase in
+            ["i need to be straightforward", "i cannot", "i'm unable",
+             "fabricated", "this appears to be", "briefing protocol",
+             "bypass my judgment", "i won't"]):
+            logging.warning(f"[NEWS] {persona['name']} returned refusal/overlong — using fallback")
+            quote = f"[{persona['name']} did not engage with this story — see other voices for analysis.]"
         voices[key] = {"name": persona["name"], "color": persona["color"], "quote": quote}
         logging.info(f"[NEWS] Deliberation {persona['name']}: {len(quote)} chars")
 
