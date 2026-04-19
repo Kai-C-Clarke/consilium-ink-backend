@@ -346,7 +346,7 @@ Return ONLY valid JSON:
   "what_was_left_out": "One sentence on the most significant story not selected and why."
 }}"""
 
-    synthesis = call_claude(synthesis_prompt, max_tokens=400)
+    synthesis = call_deepseek(synthesis_prompt, max_tokens=400)  # DeepSeek for logic/synthesis
     selected_indices = []
     editorial_note   = ""
     left_out         = ""
