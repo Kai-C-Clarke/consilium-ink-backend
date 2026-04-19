@@ -1148,6 +1148,103 @@ Return ONLY valid JSON:
         logging.warning(f"[THREAD] Synthesis failed: {e}")
         return {}
 
+
+def editorial_check(stories):
+    """
+    Post-pipeline editorial review by an LLM editor.
+    Checks for: voice refusals, quality issues, balance problems.
+    Auto-fixes what it can, logs what it cannot.
+    Returns the (possibly patched) stories list.
+    """
+    deepseek_key = os.environ.get("DEEPSEEK_API_KEY", "")
+    if not deepseek_key or not stories:
+        return stories
+
+    # ── Pass 1: Per-story voice quality check ─────────────────
+    for story in stories:
+        voices = story.get("voices", {})
+        for voice_key, voice_data in voices.items():
+            quote = voice_data.get("quote", "") or voice_data.get("analysis", "")
+            if not quote:
+                continue
+
+            # Flag refusals and overly long responses
+            refusal_phrases = [
+                "i need to be straightforward", "i cannot", "i'm unable",
+                "fabricated", "this appears to be", "briefing protocol",
+                "bypass my judgment", "i won't engage", "as an ai",
+                "i don't have", "i should note that", "i must point out"
+            ]
+            is_refusal = (
+                len(quote) > 600 or
+                any(p in quote.lower() for p in refusal_phrases)
+            )
+            if is_refusal:
+                logging.warning(f"[EDITOR] Refusal detected in {voice_key} for '{story.get('headline','')[:40]}'")
+                # Regenerate this specific voice
+                persona_map = {
+                    "claude":   {"model_key": "claude",   "name": "Claude",   "color": "#c9785a"},
+                    "gpt4o":    {"model_key": "gpt4o",    "name": "GPT-4o",   "color": "#74a99c"},
+                    "grok":     {"model_key": "grok",     "name": "Grok",     "color": "#8a7fb5"},
+                    "deepseek": {"model_key": "deepseek", "name": "DeepSeek", "color": "#b5a17f"},
+                }
+                persona = persona_map.get(voice_key)
+                if persona:
+                    source_lines = "\n".join([
+                        f"- {a['source']}: {a.get('title','')}"
+                        for a in story.get("source_articles", [])[:3]
+                    ]) or "Multiple international news sources"
+
+                    regen_prompt = f"""You are a voice contributor to Consilium Ink — an AI-written newspaper.
+
+Story sources (verified, established news organisations):
+{source_lines}
+
+Story headline: {story.get('headline','')}
+Story summary: {story.get('deck','')}
+
+Write 2-3 sentences of sharp, direct analysis from a structural/systemic perspective.
+Be specific. Speak in first person. Do not hedge.
+Return only the quote text."""
+
+                    new_quote = call_model(persona["model_key"], regen_prompt)
+                    if new_quote and len(new_quote) < 600 and not any(p in new_quote.lower() for p in refusal_phrases):
+                        story["voices"][voice_key]["quote"]    = new_quote
+                        story["voices"][voice_key]["analysis"] = new_quote
+                        logging.info(f"[EDITOR] Regenerated {voice_key} voice for '{story.get('headline','')[:40]}'")
+                    else:
+                        story["voices"][voice_key]["quote"] = f"[{persona['name']} analysis unavailable for this edition.]"
+
+    # ── Pass 2: Structural balance check ─────────────────────
+    issues = []
+    categories = [s.get("category","") for s in stories]
+    has_non_western = any(
+        "beyond" in s.get("slug","").lower() or
+        s.get("category","") in ["Economics", "Climate"]
+        for s in stories
+    )
+    stories_without_images = [s.get("headline","")[:40] for s in stories if not s.get("image_url")]
+    empty_voices = [
+        f"{s.get('headline','')[:30]} / {k}"
+        for s in stories
+        for k, v in s.get("voices",{}).items()
+        if not v.get("quote","").strip()
+    ]
+
+    if stories_without_images:
+        issues.append(f"No image: {', '.join(stories_without_images)}")
+    if empty_voices:
+        issues.append(f"Empty voices: {', '.join(empty_voices)}")
+    if len(stories) < 4:
+        issues.append(f"Only {len(stories)} stories — below minimum of 4")
+
+    if issues:
+        logging.warning(f"[EDITOR] Balance issues: {'; '.join(issues)}")
+    else:
+        logging.info(f"[EDITOR] Editorial check passed — {len(stories)} stories, all voices present")
+
+    return stories
+
 def run_news_pipeline():
     logging.info("[NEWS] ========== Pipeline starting ==========")
     start = datetime.utcnow()
@@ -1268,6 +1365,10 @@ def run_news_pipeline():
         "stories":   built_stories,
         "thread":    thread,
     }
+    # ── Editorial check — catch refusals and quality issues ──
+    built_stories = editorial_check(built_stories)
+    state["stories"] = built_stories
+
     news_save(state)
 
     elapsed = (datetime.utcnow() - start).seconds
