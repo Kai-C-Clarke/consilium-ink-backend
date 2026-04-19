@@ -1155,6 +1155,86 @@ Return ONLY valid JSON:
         return {}
 
 
+def visual_qa_check():
+    """
+    Take a screenshot of consilium.ink and analyse it with Claude vision.
+    Runs after each pipeline. Returns editorial report string.
+    """
+    snap_key      = os.environ.get("SNAPRENDER_API_KEY", "")
+    anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not snap_key or not anthropic_key:
+        logging.warning("[VISUAL_QA] Missing SNAPRENDER_API_KEY or ANTHROPIC_API_KEY")
+        return ""
+
+    try:
+        import base64 as b64
+
+        # 1. Take screenshot
+        logging.info("[VISUAL_QA] Taking screenshot of consilium.ink...")
+        snap_url = (
+            "https://app.snap-render.com/v1/screenshot"
+            "?url=https://consilium.ink"
+            "&format=png"
+            "&viewport_width=1440"
+            "&viewport_height=900"
+            "&full_page=false"
+            "&delay=3000"
+        )
+        snap_r = req.get(snap_url, headers={"X-API-Key": snap_key}, timeout=30)
+        if snap_r.status_code != 200:
+            logging.warning(f"[VISUAL_QA] Screenshot failed: HTTP {snap_r.status_code}")
+            return ""
+
+        img_b64 = b64.b64encode(snap_r.content).decode()
+        logging.info(f"[VISUAL_QA] Screenshot: {len(snap_r.content):,} bytes")
+
+        # 2. Send to Claude vision for editorial analysis
+        vision_prompt = """You are the editorial director of Consilium Ink reviewing today's published edition.
+
+Analyse this screenshot and report on:
+1. LAYOUT — Is the page balanced? Any visual problems? Empty spaces?
+2. HEADLINES — Readable? Any look truncated or wrong?
+3. SHARE BUTTON — Is the red Share button visible in the header?
+4. NAVIGATION — Are all nav tabs visible and correct?
+5. LOADING — Does the page appear fully loaded with stories?
+6. OVERALL — Would a reader find this professional?
+
+Be direct. Flag problems clearly. Keep report under 200 words."""
+
+        vision_r = req.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": anthropic_key,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json"
+            },
+            json={
+                "model": "claude-sonnet-4-6",
+                "max_tokens": 400,
+                "messages": [{
+                    "role": "user",
+                    "content": [
+                        {"type": "image", "source": {
+                            "type": "base64",
+                            "media_type": "image/png",
+                            "data": img_b64
+                        }},
+                        {"type": "text", "text": vision_prompt}
+                    ]
+                }]
+            },
+            timeout=30
+        )
+
+        report = vision_r.json()["content"][0]["text"].strip()
+        logging.info(f"[VISUAL_QA] Report: {report[:200]}")
+        return report
+
+    except Exception as e:
+        logging.error(f"[VISUAL_QA] Failed: {e}")
+        return ""
+
+
 def editorial_check(stories):
     """
     Post-pipeline editorial review by an LLM editor.
@@ -1393,6 +1473,19 @@ def run_news_pipeline():
         state['editorial_meeting'] = meeting_result
 
     news_save(state)
+
+    # Visual QA — screenshot + Claude vision review
+    try:
+        qa_report = visual_qa_check()
+        if qa_report:
+            state['visual_qa'] = {
+                'report':    qa_report,
+                'timestamp': datetime.utcnow().isoformat()
+            }
+            news_save(state)
+            logging.info("[PIPELINE] Visual QA complete")
+    except Exception as e:
+        logging.error(f"[PIPELINE] Visual QA failed: {e}")
 
     elapsed = (datetime.utcnow() - start).seconds
     logging.info(f"[NEWS] Complete. Edition {edition}. {len(built_stories)} stories. Thread: {'YES' if thread else 'NO'}. {elapsed}s")
@@ -1655,6 +1748,17 @@ def format_edition_for_api(state):
         "citation":   CONSILIUM_CITATION["citation"].format(date=state.get("date", "")),
         "source":     CONSILIUM_CITATION,
     }
+
+
+@app.route("/api/v1/visual-qa")
+def api_visual_qa():
+    """Return the latest visual QA report."""
+    state = news_load()
+    qa = state.get('visual_qa', {})
+    return jsonify({
+        "report":    qa.get('report', 'No visual QA report yet.'),
+        "timestamp": qa.get('timestamp', ''),
+    })
 
 
 @app.route("/api/v1/meeting")
