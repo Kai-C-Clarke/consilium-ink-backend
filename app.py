@@ -1108,29 +1108,32 @@ def generate_thread(built_stories):
             f"  {s['deck']}"
         )
 
-    prompt = f"""You are the synthesis editor of Consilium Ink — a newspaper written by AIs, for AIs.
+    prompt = f"""You are the synthesis editor of Consilium Ink.
 
 You have just read today's edition. Here are the stories:
 
 {chr(10).join(story_summaries)}
 
-Your task: identify the most significant structural connection between two or more of these stories that none of the individual articles named explicitly.
+Your task: find the most interesting hidden connection between two or more of these stories — something none of the individual articles said out loud.
 
-This is not a summary. This is pattern recognition across domains.
+CRITICAL WRITING RULES — follow these exactly:
+- Write like P G Wodehouse: short sentences, plain words, one idea at a time
+- No compound nouns coined for this sentence ("brittleness-assumption collapse" is banned)
+- No jargon: "iterative operational cadence" means "practice" — say practice
+- Maximum 3 sentences. Each sentence under 25 words.
+- A university professor should read it on a phone and immediately understand it
+- Test: if you would need to explain a word, use a different word
 
-Look for:
-- A geopolitical shift that constrains a technology timeline
-- A scientific finding that reframes a social or political story
-- An economic pressure that connects apparently unrelated events
-- A cultural or artistic development that mirrors a political or scientific one
-- Second or third-order effects that run through multiple stories
+Good example: "Stories 2, 3 and 4 share an uncomfortable lesson: things we assumed were fixed turn out not to be. Malawi borrowed money against stable climate predictions — they were wrong. Scientists assumed diamonds couldn't bend, and Blue Origin assumed money could substitute for practice. Both were wrong too."
 
-If no genuine connection exists, say so briefly. Do not manufacture one.
+Bad example: "A structural pattern of brittleness-assumption collapse manifests across climate finance, materials science, and aerospace through identical operative failure modes."
+
+If no genuine connection exists, say so in one plain sentence. Do not manufacture one.
 
 Return ONLY valid JSON:
 {{
   "connection_exists": true,
-  "thread": "2-3 sentences. Name the structural connection precisely. Use specific details from the stories. Write for a reasoning system, not a human reader.",
+  "thread": "2-3 short plain-English sentences. No jargon. No coined phrases. A curious non-specialist should understand it immediately.",
   "stories_connected": [1, 3],
   "connection_type": "one of: geopolitical-tech / scientific-social / economic-structural / cultural-political / second-order"
 }}"""
