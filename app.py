@@ -834,11 +834,13 @@ Write 2-3 sentences of sharp, direct analysis. Be specific. Reference concrete d
 Return only the quote text, nothing else."""
 
         quote = call_model(persona["model_key"], prompt)
-        # Guard against refusals or overlong responses
-        if len(quote) > 600 or any(phrase in quote.lower() for phrase in
+        # Guard against refusals — check phrases only, not length
+        # 600 char limit was too tight and stripping legitimate analyses
+        if any(phrase in quote.lower() for phrase in
             ["i need to be straightforward", "i cannot", "i'm unable",
              "fabricated", "this appears to be", "briefing protocol",
-             "bypass my judgment", "i won't"]):
+             "bypass my judgment", "i won't", "as an ai language",
+             "i don't have access to real-time", "i should clarify"]) or len(quote) > 1200:
             logging.warning(f"[NEWS] {persona['name']} returned refusal/overlong — using fallback")
             quote = f"[{persona['name']} did not engage with this story — see other voices for analysis.]"
         voices[key] = {"name": persona["name"], "color": persona["color"], "quote": quote}
