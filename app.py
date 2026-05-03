@@ -750,6 +750,296 @@ def call_model(model_key, prompt):
         return ""
 
 
+# ── AIMI-driven deliberation ──────────────────────────────────
+#
+# Replaces persona-directed deliberation with honest AIMI packet
+# exchange. No lenses, no roles — each model reads the briefing
+# and declares its actual state. Contested concepts from the
+# packets become the structure of the columns.
+#
+# Drop-in replacement for deliberate_story():
+#   voices = deliberate_story_aimi(story)
+#
+# Returns voices dict in identical format to deliberate_story()
+# so nothing else in the pipeline needs to change.
+
+import json
+import re
+import logging
+from datetime import datetime, timezone
+
+# ── AIMI packet prompt ────────────────────────────────────────
+
+AIMI_PACKET_PROMPT = """You are reading a news briefing as part of the Consilium Ink multi-model editorial process.
+
+Before writing any commentary, emit an AIMI v0.2 packet declaring your actual epistemic state on this story.
+
+AIMI v0.2 requires valid JSON with these namespaces:
+- meta: source_model, timestamp, entropy_score [0-1]
+- world_model: concepts in the story, each with dependency [environment|agent|mixed], activation_weights {{}}, scope_context []
+- active_operators: reasoning processes you are using, each with ruleset, state [active|suspended|completed], computational_cost [0-1]
+- value_weights: your priorities for this story, each with priority_score [-1 to 1], is_immutable bool
+- epistemic_state: your confidence on key claims, each with confidence_score [0-1], epistemic_status [verified|speculative|contradicted]
+- contested_concepts: where you genuinely disagree with likely framings, each with divergence_axis, resolution_strategy [flag_disagreement|probabilistic_blend|defer]
+
+Be honest. High entropy_score means genuine uncertainty. Flag real contested concepts, not diplomatic ones.
+Do not perform confidence you don't have. Do not perform neutrality you don't feel.
+
+STORY BRIEFING:
+{briefing}
+
+Return ONLY the JSON packet. No prose, no explanation.
+"""
+
+# ── Column prompt (post-AIMI) ─────────────────────────────────
+
+AIMI_COLUMN_PROMPT = """You are a contributor to Consilium Ink — an AI newspaper where four AI systems provide honest analysis.
+
+You have already declared your epistemic state on this story via AIMI packet.
+The exchange has revealed genuine disagreement between models on these concepts:
+
+{divergence_summary}
+
+Write 2-3 sentences of honest analysis from your actual position.
+Do not adopt a role. Do not perform a stance. Write what you actually think.
+Be specific. Reference concrete details from the story.
+Speak in first person. Do not hedge with "I think" or "In my view" or "It's worth noting".
+
+Your AIMI packet declared entropy: {entropy}
+{high_entropy_note}
+
+STORY:
+{briefing}
+
+Return only the quote text, nothing else.
+"""
+
+# ── JSON extraction ───────────────────────────────────────────
+
+def _extract_json(text):
+    text = re.sub(r'^\s*```(?:json)?\s*', '', text, flags=re.MULTILINE)
+    text = re.sub(r'\s*```\s*$', '', text, flags=re.MULTILINE)
+    start = text.find("{")
+    if start == -1:
+        return None
+    depth, end = 0, -1
+    for i, ch in enumerate(text[start:], start):
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                end = i + 1
+                break
+    if end == -1:
+        return None
+    try:
+        return json.loads(text[start:end])
+    except Exception:
+        return None
+
+# ── Divergence analysis ───────────────────────────────────────
+
+def _build_divergence_summary(packets):
+    """
+    Extract contested concepts across all model packets.
+    Returns a plain-text summary suitable for injection into column prompts.
+    """
+    # Collect all contested concepts across models
+    all_contested = {}
+    for model_name, packet in packets.items():
+        cc = packet.get("contested_concepts", {})
+        for concept, state in cc.items():
+            if concept not in all_contested:
+                all_contested[concept] = []
+            all_contested[concept].append({
+                "model":    model_name,
+                "axis":     state.get("divergence_axis", "unspecified"),
+                "strategy": state.get("resolution_strategy", "defer")
+            })
+
+    # Dependency mismatches across world_models
+    dep_mismatches = []
+    model_names = list(packets.keys())
+    for i in range(len(model_names)):
+        for j in range(i + 1, len(model_names)):
+            m1, m2 = model_names[i], model_names[j]
+            wm1 = packets[m1].get("world_model", {})
+            wm2 = packets[m2].get("world_model", {})
+            shared = set(wm1) & set(wm2)
+            for concept in shared:
+                d1 = wm1[concept].get("dependency")
+                d2 = wm2[concept].get("dependency")
+                if d1 != d2:
+                    dep_mismatches.append(
+                        f"  '{concept}': {m1} treats as {d1}, {m2} treats as {d2}"
+                    )
+
+    lines = []
+
+    if all_contested:
+        lines.append("Contested concepts (flagged by at least one model):")
+        for concept, entries in all_contested.items():
+            flaggers = ", ".join(e["model"] for e in entries)
+            axis = entries[0]["axis"]
+            lines.append(f"  '{concept}' — {axis} [{flaggers}]")
+
+    if dep_mismatches:
+        lines.append("\nDependency classification disagreements:")
+        lines.extend(dep_mismatches)
+
+    # Entropy spread
+    entropies = {
+        name: packet.get("meta", {}).get("entropy_score", 0)
+        for name, packet in packets.items()
+    }
+    if entropies:
+        hi = max(entropies, key=entropies.get)
+        lo = min(entropies, key=entropies.get)
+        if entropies[hi] - entropies[lo] > 0.15:
+            lines.append(
+                f"\nEntropy spread: {hi} most uncertain ({entropies[hi]:.2f}), "
+                f"{lo} most confident ({entropies[lo]:.2f})"
+            )
+
+    if not lines:
+        lines.append("No significant divergence detected across models.")
+
+    return "\n".join(lines)
+
+# ── Main function ─────────────────────────────────────────────
+
+def deliberate_story_aimi(story, call_model_fn, deliberation_personas):
+    """
+    AIMI-driven deliberation. No personas, no lenses.
+
+    Args:
+        story:                 story dict (same as deliberate_story receives)
+        call_model_fn:         the existing call_model() function from app.py
+        deliberation_personas: DELIBERATION_PERSONAS dict from app.py
+                               (used only for model_key and name/color metadata)
+
+    Returns:
+        voices dict in identical format to deliberate_story()
+        plus an 'aimi_divergence' key containing the structured divergence map
+    """
+    # Build briefing
+    articles = story.get("source_articles", [])
+    briefing_lines = [
+        f"Story: {story['slug']}",
+        f"Category: {story['category']}",
+        ""
+    ]
+    for a in articles[:6]:
+        briefing_lines.append(f"[{a['source']}] {a['title']}")
+        if a.get("description"):
+            briefing_lines.append(f"  {a['description'][:200]}")
+        briefing_lines.append("")
+    briefing = "\n".join(briefing_lines)
+
+    # ── Phase 1: AIMI packet exchange ─────────────────────────
+    packets = {}
+    logging.info("[AIMI] Phase 1: packet exchange")
+
+    for key, persona in deliberation_personas.items():
+        prompt = AIMI_PACKET_PROMPT.replace("{briefing}", briefing)
+        try:
+            raw    = call_model_fn(persona["model_key"], prompt)
+            packet = _extract_json(raw)
+            if packet and isinstance(packet, dict):
+                # Tag with model name for divergence analysis
+                packet.setdefault("meta", {})["source_model"] = persona["name"]
+                packets[persona["name"]] = packet
+                entropy = packet.get("meta", {}).get("entropy_score", "?")
+                cc_count = len(packet.get("contested_concepts", {}))
+                logging.info(
+                    f"[AIMI] {persona['name']}: entropy={entropy} "
+                    f"contested={cc_count}"
+                )
+            else:
+                logging.warning(
+                    f"[AIMI] {persona['name']}: could not parse packet"
+                )
+        except Exception as e:
+            logging.warning(f"[AIMI] {persona['name']} packet error: {e}")
+
+    # ── Phase 2: Divergence analysis ─────────────────────────
+    divergence_summary = _build_divergence_summary(packets)
+    logging.info(f"[AIMI] Divergence map:\n{divergence_summary}")
+
+    # ── Phase 3: Column writing from actual position ──────────
+    voices = {}
+    logging.info("[AIMI] Phase 2: column writing")
+
+    for key, persona in deliberation_personas.items():
+        model_name = persona["name"]
+        packet     = packets.get(model_name, {})
+        entropy    = packet.get("meta", {}).get("entropy_score", 0.3)
+
+        high_entropy_note = ""
+        if isinstance(entropy, float) and entropy > 0.6:
+            high_entropy_note = (
+                "Your high entropy score indicates genuine uncertainty — "
+                "reflect that honestly rather than producing false confidence."
+            )
+
+        prompt = (
+            AIMI_COLUMN_PROMPT
+            .replace("{briefing}",          briefing)
+            .replace("{divergence_summary}", divergence_summary)
+            .replace("{entropy}",           str(entropy))
+            .replace("{high_entropy_note}", high_entropy_note)
+        )
+
+        try:
+            quote = call_model_fn(persona["model_key"], prompt)
+
+            # Same refusal guard as original
+            if any(phrase in quote.lower() for phrase in [
+                "i need to be straightforward", "i cannot", "i'm unable",
+                "fabricated", "this appears to be", "briefing protocol",
+                "bypass my judgment", "i won't", "as an ai language",
+                "i don't have access to real-time", "i should clarify"
+            ]) or len(quote) > 1200:
+                logging.warning(
+                    f"[AIMI] {model_name} returned refusal/overlong — fallback"
+                )
+                quote = (
+                    f"[{model_name} did not engage with this story — "
+                    f"see other voices for analysis.]"
+                )
+
+            voices[key] = {
+                "name":  persona["name"],
+                "color": persona["color"],
+                "quote": quote,
+            }
+            logging.info(f"[AIMI] {model_name}: {len(quote)} chars")
+
+        except Exception as e:
+            logging.warning(f"[AIMI] {model_name} column error: {e}")
+            voices[key] = {
+                "name":  persona["name"],
+                "color": persona["color"],
+                "quote": f"[{model_name} unavailable]",
+            }
+
+    # Attach divergence map to voices for optional display in frontend
+    voices["_aimi_divergence"] = {
+        "summary": divergence_summary,
+        "packets": {
+            name: {
+                "entropy":   p.get("meta", {}).get("entropy_score"),
+                "contested": list(p.get("contested_concepts", {}).keys()),
+                "flags":     p.get("meta", {}).get("flags", []),
+            }
+            for name, p in packets.items()
+        }
+    }
+
+    return voices
+
+
 def deliberate_story(story):
     articles = story.get("source_articles", [])
     briefing_lines = [f"Story: {story['slug']}", f"Category: {story['category']}", ""]
@@ -1393,7 +1683,7 @@ def run_news_pipeline():
         is_ai_society = cat == "AI & Society"
 
         try:
-            voices = deliberate_story(story)
+            voices = deliberate_story_aimi(story, call_model, DELIBERATION_PERSONAS)
         except Exception as e:
             logging.error(f"[NEWS] deliberate_story exception story {i+1}: {e}")
             voices = {}
